@@ -1,3 +1,16 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "hero-medical",
+      "description": "Clean medical environment for PulseLog landing",
+      "imageUrl": "https://picsum.photos/seed/pulse1/1200/800",
+      "imageHint": "medical clean"
+    },
+    {
+      "id": "org-logo-placeholder",
+      "description": "Default organization logo",
+      "imageUrl": "https://picsum.photos/seed/pulselogo/200/200",
+      "imageHint": "abstract logo"
+    }
+  ]
 }
