@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -13,17 +12,20 @@ import {
   Clock, 
   AlertCircle, 
   Smile, 
+  Meh,
+  Frown,
   FileText, 
   Download, 
-  ArrowUpRight,
+  Activity,
   TrendingUp,
   BrainCircuit,
   Loader2
 } from "lucide-react";
 import { format } from "date-fns";
-import { AttendanceLog, MoodRating } from "@/lib/types";
+import { AttendanceLog } from "@/lib/types";
 import { summarizeHandoverNotes, SummarizeHandoverNotesOutput } from "@/ai/flows/summarize-handover-notes";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 export default function AdminDashboard() {
   const { profile, organization } = usePulseLogAuth();
@@ -106,7 +108,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="border-none shadow-sm bg-primary text-primary-foreground overflow-hidden relative">
           <div className="absolute right-0 top-0 p-4 opacity-10">
@@ -151,7 +152,6 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      {/* AI Intelligence Panel */}
       {aiSummary && (
         <Card className="border-2 border-primary/20 bg-primary/[0.02] shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500">
           <CardHeader className="bg-primary/5 border-b border-primary/10">
@@ -220,7 +220,6 @@ export default function AdminDashboard() {
         </Card>
       )}
 
-      {/* Live Status Grid */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-headline font-bold flex items-center gap-2">
