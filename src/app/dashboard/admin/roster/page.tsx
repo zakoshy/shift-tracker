@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { useFirestore, useCollection } from "@/firebase";
 import { collection, query, where, doc, deleteDoc } from "firebase/firestore";
@@ -35,7 +35,6 @@ import {
   UserPlus, 
   QrCode, 
   Trash2, 
-  Mail, 
   Building2,
   Copy,
   CheckCircle2,
@@ -43,7 +42,7 @@ import {
 } from "lucide-react";
 import { UserProfile } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import Image from "next/image";
+import { QRCodeSVG } from "qrcode.react";
 
 export default function StaffRosterPage() {
   const { profile, organization } = usePulseLogAuth();
@@ -107,9 +106,18 @@ export default function StaffRosterPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col items-center space-y-6 py-6">
-              <div className="bg-white p-6 rounded-2xl border-2 border-primary/10 shadow-inner">
-                <QrCode className="h-48 w-48 text-primary" />
-                {/* In a real app, this would be a generated QR code image */}
+              <div className="bg-white p-6 rounded-2xl border-2 border-primary/10 shadow-md flex items-center justify-center">
+                {inviteUrl ? (
+                  <QRCodeSVG 
+                    value={inviteUrl} 
+                    size={200} 
+                    level="H" 
+                    includeMargin={false}
+                    className="text-primary"
+                  />
+                ) : (
+                  <QrCode className="h-48 w-48 text-muted-foreground animate-pulse" />
+                )}
               </div>
               
               <div className="w-full space-y-2">
@@ -121,6 +129,9 @@ export default function StaffRosterPage() {
                   </Button>
                 </div>
               </div>
+              <p className="text-xs text-center text-muted-foreground italic">
+                Scanning this will open the onboarding form on the staff member's device.
+              </p>
             </div>
           </DialogContent>
         </Dialog>
