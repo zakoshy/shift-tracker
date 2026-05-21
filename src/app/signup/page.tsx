@@ -3,8 +3,8 @@
 
 import { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc, collection } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { doc, setDoc, collection, serverTimestamp } from "firebase/firestore";
+import { useAuth, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,11 +20,15 @@ export default function SignupPage() {
   const [orgName, setOrgName] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
+  
+  const auth = useAuth();
+  const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!auth || !db) return;
     setLoading(true);
     try {
       // 1. Create Auth User
@@ -37,7 +41,7 @@ export default function SignupPage() {
       await setDoc(orgRef, {
         id: orgId,
         name: orgName,
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
       });
 
       // 3. Create User Profile (Admin)
@@ -48,7 +52,7 @@ export default function SignupPage() {
         name: fullName,
         role: 'admin',
         department: 'Administration',
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
       });
 
       router.push("/dashboard/admin");
