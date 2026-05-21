@@ -1,0 +1,66 @@
+{
+  "entities": {
+    "Organization": {
+      "title": "Organization",
+      "description": "A healthcare facility or department using PulseLog.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User account details including identity, role, and organization affiliation.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "organizationId": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "staff"] },
+        "department": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "organizationId", "email", "name", "role"]
+    },
+    "AttendanceLog": {
+      "title": "Attendance Log",
+      "description": "A record of a staff member's shift arrival, departure, and clinical handover.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userDepartment": { "type": "string" },
+        "organizationId": { "type": "string" },
+        "date": { "type": "string", "description": "YYYY-MM-DD" },
+        "clockInTime": { "type": "string" },
+        "clockOutTime": { "type": "string" },
+        "status": { "type": "string", "enum": ["on-time", "late", "early-departure", "present"] },
+        "handoverNotes": { "type": "string" },
+        "moodRating": { "type": "integer", "enum": [1, 2, 3] }
+      },
+      "required": ["id", "userId", "organizationId", "date"]
+    }
+  },
+  "auth": {
+    "providers": ["password"]
+  },
+  "firestore": {
+    "/organizations/{organizationId}": {
+      "schema": { "$ref": "#/entities/Organization" },
+      "description": "Stores core facility details."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores user profiles and role-based access information."
+    },
+    "/attendance_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AttendanceLog" },
+      "description": "Stores daily shift attendance and clinical handover intelligence."
+    }
+  }
+}

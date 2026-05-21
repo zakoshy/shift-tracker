@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper to check if the requesting user is an admin of the given organization
+    function isAdmin(orgId) {
+      return request.auth != null && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
+    }
+
+    // Organizations: Authenticated users can create (during signup) and read.
+    match /organizations/{orgId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow update, delete: if isAdmin(orgId);
+    }
+
+    // User Profiles: Users can read/write their own profiles. Admins can read all profiles in their org.
+    match /users/{userId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin(resource.data.organizationId));
+      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin(resource.data.organizationId));
+      allow delete: if isAdmin(resource.data.organizationId);
+    }
+
+    // Attendance Logs: Staff can create/read/update their own logs. Admins can read all logs for their org.
+    match /attendance_logs/{logId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid || 
+        isAdmin(resource.data.organizationId)
+      );
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin(resource.data.organizationId);
+    }
+  }
+}
