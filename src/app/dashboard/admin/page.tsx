@@ -1,9 +1,10 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,16 +40,22 @@ export default function AdminDashboard() {
     if (!profile?.organizationId) return;
 
     const today = format(new Date(), 'yyyy-MM-dd');
+    // Simplified query to avoid requiring composite indexes
     const q = query(
       collection(db, "attendance_logs"),
       where("organizationId", "==", profile.organizationId),
-      where("date", "==", today),
-      orderBy("clockInTime", "desc")
+      where("date", "==", today)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AttendanceLog[];
-      setLogs(data);
+      // Client-side sorting to fix the index requirement error
+      const sortedData = data.sort((a, b) => {
+        const timeA = a.clockInTime || '';
+        const timeB = b.clockInTime || '';
+        return timeB.localeCompare(timeA);
+      });
+      setLogs(sortedData);
       setLoading(false);
     }, (error) => {
       console.error("Firestore error:", error);

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Activity, Loader2, Hospital } from "lucide-react";
+import { Activity, Loader2, Hospital, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 
@@ -53,6 +53,11 @@ export default function SignupPage() {
         role: 'admin',
         department: 'Administration',
         createdAt: serverTimestamp(),
+      });
+
+      toast({
+        title: "Account Created",
+        description: "Welcome to PulseLog! Your organization has been successfully registered.",
       });
 
       router.push("/dashboard/admin");
