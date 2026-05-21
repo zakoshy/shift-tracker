@@ -3,7 +3,7 @@
 
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { useRouter, usePathname } from "next/navigation";
-import { auth } from "@/lib/firebase";
+import { useAuth } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { 
   Activity, 
@@ -13,15 +13,18 @@ import {
   FileText, 
   LogOut,
   Settings,
-  HelpCircle
+  HelpCircle,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 export function SidebarNav() {
-  const { profile, organization } = usePulseLogAuth();
+  const { profile, organization, loading } = usePulseLogAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const auth = useAuth();
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -32,17 +35,16 @@ export function SidebarNav() {
     ? [
         { label: 'Overview', icon: LayoutDashboard, href: '/dashboard/admin' },
         { label: 'Staff Roster', icon: Users, href: '/dashboard/admin/roster' },
-        { label: 'Shift Logs', icon: FileText, href: '/dashboard/admin/logs' },
       ]
     : [
         { label: 'My Shift', icon: Clock, href: '/dashboard/staff' },
       ];
 
   return (
-    <div className="h-full flex flex-col bg-white border-r w-64">
+    <div className="h-full flex flex-col bg-white border-r w-64 shrink-0">
       <div className="p-6">
-        <div className="flex items-center gap-2 mb-8">
-          <Activity className="h-7 w-7 text-primary" strokeWidth={2.5} />
+        <Link href="/" className="flex items-center gap-2 mb-8 group">
+          <Activity className="h-7 w-7 text-primary transition-transform group-hover:scale-110" strokeWidth={2.5} />
           <div className="flex flex-col">
             <span className="text-xl font-headline font-bold text-primary leading-tight">PulseLog</span>
             {organization && (
@@ -51,11 +53,11 @@ export function SidebarNav() {
               </span>
             )}
           </div>
-        </div>
+        </Link>
 
         <nav className="space-y-1">
           {navItems.map((item) => (
-            <a
+            <Link
               key={item.href}
               href={item.href}
               className={cn(
@@ -67,7 +69,7 @@ export function SidebarNav() {
             >
               <item.icon className={cn("h-5 w-5", pathname === item.href ? "text-primary-foreground" : "text-muted-foreground group-hover:text-foreground")} />
               {item.label}
-            </a>
+            </Link>
           ))}
         </nav>
       </div>
@@ -85,13 +87,19 @@ export function SidebarNav() {
         </div>
         
         <div className="flex items-center gap-3 px-2">
-          <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-            {profile?.name?.charAt(0) || 'U'}
-          </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-sm font-bold text-foreground truncate">{profile?.name || 'Loading...'}</span>
-            <span className="text-xs text-muted-foreground truncate uppercase font-bold tracking-tighter">{profile?.department}</span>
-          </div>
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : (
+            <>
+              <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold border border-primary/20">
+                {profile?.name?.charAt(0) || 'U'}
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-bold text-foreground truncate">{profile?.name || 'User'}</span>
+                <span className="text-xs text-muted-foreground truncate uppercase font-bold tracking-tighter">{profile?.department}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
