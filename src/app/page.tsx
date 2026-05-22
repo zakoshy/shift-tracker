@@ -1,15 +1,12 @@
-
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { Button } from "@/components/ui/button";
 import { 
   Activity, 
   ShieldCheck, 
-  Clock, 
-  FileText, 
   Smartphone, 
   Users, 
   BrainCircuit,
@@ -22,6 +19,7 @@ import Link from "next/link";
 export default function Home() {
   const { user, profile, loading } = usePulseLogAuth();
   const router = useRouter();
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
     if (!loading && user && profile) {
@@ -60,7 +58,6 @@ export default function Home() {
       </header>
 
       <main className="container mx-auto px-6">
-        {/* Hero Section */}
         <div className="pt-20 pb-24 text-center max-w-5xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-widest mb-6">
             <ShieldCheck className="h-4 w-4" />
@@ -88,7 +85,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Feature Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto mb-32">
           <div className="bg-card p-10 rounded-3xl shadow-sm border-2 border-primary/5 transition-all hover:border-primary/20 group">
             <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-8 group-hover:scale-110 transition-transform">
@@ -113,7 +109,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* How it Works Section */}
         <div className="bg-primary/5 rounded-[3rem] p-12 md:p-20 mb-32">
           <div className="max-w-4xl mx-auto text-center mb-16">
             <h2 className="text-4xl font-headline font-bold mb-6">Unified Administrative Oversight</h2>
@@ -145,7 +140,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Trust/Social Proof Section */}
         <div className="text-center pb-24 border-t border-primary/5 pt-24">
           <p className="text-xs font-bold uppercase tracking-[0.3em] text-muted-foreground mb-12">Built for Excellence</p>
           <div className="flex flex-wrap justify-center gap-12 opacity-50 grayscale">
@@ -162,7 +156,7 @@ export default function Home() {
             <Activity className="h-6 w-6 text-primary" />
             <span className="text-xl font-headline font-bold text-primary">PulseLog</span>
           </div>
-          <p className="text-sm text-muted-foreground italic font-medium">&copy; 2024 PulseLog Healthcare Solutions. Precision in every pulse.</p>
+          <p className="text-sm text-muted-foreground italic font-medium">&copy; {currentYear} PulseLog Healthcare Solutions. Precision in every pulse.</p>
         </div>
       </footer>
     </div>

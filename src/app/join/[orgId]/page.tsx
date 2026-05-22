@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -10,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Activity, Loader2, UserPlus, CheckCircle2, ShieldAlert } from "lucide-react";
+import { Activity, Loader2, UserPlus, ShieldAlert, Eye, EyeOff } from "lucide-react";
 import { Organization } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -20,6 +19,7 @@ export default function JoinOrganizationPage() {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState("");
   const [department, setDepartment] = useState("");
   const [loading, setLoading] = useState(false);
@@ -52,11 +52,9 @@ export default function JoinOrganizationPage() {
     if (!auth || !db || !organization) return;
     setLoading(true);
     try {
-      // 1. Create Auth User
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // 2. Create User Profile
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         organizationId: organization.id,
@@ -154,14 +152,26 @@ export default function JoinOrganizationPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Create Password</Label>
-              <Input 
-                id="password" 
-                type="password" 
-                placeholder="Min. 8 characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required 
-              />
+              <div className="relative">
+                <Input 
+                  id="password" 
+                  type={showPassword ? "text" : "password"} 
+                  placeholder="Min. 8 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required 
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                </Button>
+              </div>
             </div>
             <Button className="w-full h-11 shadow-lg shadow-primary/20" type="submit" disabled={loading}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <><UserPlus className="mr-2 h-4 w-4" /> Join Organization</>}

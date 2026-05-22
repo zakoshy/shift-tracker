@@ -1,4 +1,3 @@
-
 "use client";
 
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
@@ -10,10 +9,7 @@ import {
   LayoutDashboard, 
   Clock, 
   Users, 
-  FileText, 
   LogOut,
-  Settings,
-  HelpCircle,
   Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -41,7 +37,7 @@ export function SidebarNav() {
       ];
 
   return (
-    <div className="h-full flex flex-col bg-white border-r w-64 shrink-0">
+    <div className="h-full flex flex-col bg-white border-r w-full md:w-64 shrink-0">
       <div className="p-6">
         <Link href="/" className="flex items-center gap-2 mb-8 group">
           <Activity className="h-7 w-7 text-primary transition-transform group-hover:scale-110" strokeWidth={2.5} />
@@ -94,7 +90,7 @@ export function SidebarNav() {
               <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold border border-primary/20">
                 {profile?.name?.charAt(0) || 'U'}
               </div>
-              <div className="flex flex-col min-w-0">
+              <div className="flex flex-col min-w-0 overflow-hidden">
                 <span className="text-sm font-bold text-foreground truncate">{profile?.name || 'User'}</span>
                 <span className="text-xs text-muted-foreground truncate uppercase font-bold tracking-tighter">{profile?.department}</span>
               </div>
