@@ -14,8 +14,7 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle, 
-  DialogDescription,
-  DialogFooter
+  DialogDescription
 } from "@/components/ui/dialog";
 import { 
   Clock, 
@@ -25,12 +24,14 @@ import {
   Frown, 
   Loader2, 
   CheckCircle2,
-  AlertCircle,
   ShieldCheck,
   MapPin,
   LocateFixed,
   ShieldX,
-  Stethoscope
+  Stethoscope,
+  Info,
+  BrainCircuit,
+  Heart
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -122,7 +123,6 @@ export default function StaffPage() {
     const todayStr = format(now, 'yyyy-MM-dd');
     const timeStr = format(now, 'HH:mm:ss');
     
-    // Determine lateness based on individual shift start
     const [startH, startM] = (profile.shiftStart || "08:00").split(':').map(Number);
     const lateThreshold = new Date();
     lateThreshold.setHours(startH, startM, 0);
@@ -147,7 +147,7 @@ export default function StaffPage() {
     try {
       await setDoc(newLogRef, newLog);
       setAttendance(newLog as AttendanceLog);
-      toast({ title: status === 'late' ? "Late Arrival Noted" : "Clocked In", description: `Arrival verified at ${format(now, 'hh:mm a')}`, variant: status === 'late' ? "destructive" : "default" });
+      toast({ title: status === 'late' ? "Late Arrival Noted" : "Clocked In", description: `Arrival verified at ${format(now, 'hh:mm a')}` });
     } catch (err) {
       toast({ title: "Error", description: "Failed to log shift start.", variant: "destructive" });
     } finally {
@@ -161,7 +161,6 @@ export default function StaffPage() {
     const now = new Date();
     const timeStr = format(now, 'HH:mm:ss');
     
-    // Determine early departure based on individual shift end
     const [endH, endM] = (profile.shiftEnd || "17:00").split(':').map(Number);
     const earlyThreshold = new Date();
     earlyThreshold.setHours(endH, endM, 0);
@@ -193,7 +192,7 @@ export default function StaffPage() {
       <div className="text-center space-y-2 mb-2">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-[0.2em] mb-4 border border-primary/20">
           <ShieldCheck className="h-4 w-4" />
-          Protocol Verified
+          Secure Protocol Active
         </div>
         <h1 className="text-4xl font-headline font-black text-foreground tracking-tight">Shift Verification</h1>
         <div className="flex items-center justify-center gap-3 bg-card p-3 rounded-2xl border shadow-sm">
@@ -228,7 +227,7 @@ export default function StaffPage() {
                  locationStatus === 'checking' ? <Loader2 className="h-5 w-5 animate-spin" /> :
                  <ShieldX className="h-5 w-5" />}
                 <span className="text-[10px] font-bold uppercase tracking-[0.2em]">
-                  {locationStatus === 'verified' ? "Institutional Perimeter Locked" :
+                  {locationStatus === 'verified' ? "Facility Perimeter Locked" :
                    locationStatus === 'checking' ? "Acquiring GPS Signal..." :
                    locationStatus === 'denied' ? "GPS Access Denied" : 
                    locationStatus === 'outside' ? "Outside Geofence" : "No GPS Link"}
@@ -247,24 +246,28 @@ export default function StaffPage() {
                   {loading ? <Loader2 className="animate-spin h-8 w-8" /> : (
                     <>
                       <Clock className="h-8 w-8" />
-                      <span className="text-xl font-bold">Authorize Arrival</span>
-                      <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Scheduled: {profile?.shiftStart || "08:00"}</span>
+                      <span className="text-xl font-bold uppercase tracking-tight">Authorize Arrival</span>
+                      <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Shift: {profile?.shiftStart} - {profile?.shiftEnd}</span>
                     </>
                   )}
                 </Button>
+                <div className="flex items-start gap-3 p-4 bg-muted/30 rounded-2xl">
+                  <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                  <p className="text-[10px] font-medium leading-relaxed text-muted-foreground italic">Arrival logs are synchronized with institutional payroll and geofenced to your ward location.</p>
+                </div>
               </div>
             ) : attendance.clockOutTime ? (
-              <div className="py-8 flex flex-col items-center text-center space-y-8">
-                <div className="h-24 w-24 bg-green-500/10 rounded-full flex items-center justify-center border-4 border-white shadow-xl">
+              <div className="py-8 flex flex-col items-center text-center space-y-8 animate-in fade-in zoom-in-95 duration-500">
+                <div className="h-24 w-24 bg-green-500/10 rounded-full flex items-center justify-center border-4 border-white shadow-xl ring-1 ring-green-500/20">
                   <CheckCircle2 className="h-12 w-12 text-green-600" />
                 </div>
                 <div>
                   <h3 className="text-3xl font-headline font-black text-foreground">Shift Completed</h3>
-                  <p className="text-muted-foreground text-sm font-medium mt-2">Intelligence handover successfully synchronized.</p>
+                  <p className="text-muted-foreground text-sm font-medium mt-2">Intelligence handover successfully synchronized to the Command Center.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4 w-full">
-                  <div className="bg-muted/30 p-6 rounded-3xl border flex flex-col items-center"><span className="text-[10px] font-bold text-muted-foreground uppercase mb-2">In</span><span className="text-2xl font-black font-mono">{attendance.clockInTime?.substring(0, 5)}</span></div>
-                  <div className="bg-muted/30 p-6 rounded-3xl border flex flex-col items-center"><span className="text-[10px] font-bold text-muted-foreground uppercase mb-2">Out</span><span className="text-2xl font-black font-mono">{attendance.clockOutTime?.substring(0, 5)}</span></div>
+                  <div className="bg-muted/30 p-6 rounded-3xl border flex flex-col items-center"><span className="text-[10px] font-bold text-muted-foreground uppercase mb-2">Arrival</span><span className="text-2xl font-black font-mono">{attendance.clockInTime?.substring(0, 5)}</span></div>
+                  <div className="bg-muted/30 p-6 rounded-3xl border flex flex-col items-center"><span className="text-[10px] font-bold text-muted-foreground uppercase mb-2">Departure</span><span className="text-2xl font-black font-mono">{attendance.clockOutTime?.substring(0, 5)}</span></div>
                 </div>
               </div>
             ) : (
@@ -277,17 +280,21 @@ export default function StaffPage() {
                       <p className="text-2xl font-black text-foreground font-mono">{attendance.clockInTime?.substring(0, 5)}</p>
                     </div>
                   </div>
-                  {attendance.status === 'late' && <Badge variant="destructive" className="h-6 px-3 text-[10px] font-bold uppercase">Late</Badge>}
+                  {attendance.status === 'late' && <span className="h-6 px-3 flex items-center bg-destructive/10 text-destructive text-[10px] font-bold uppercase rounded-lg">Late Arrival</span>}
                 </div>
-                <Button 
-                  className="w-full h-28 rounded-3xl flex flex-col gap-2 bg-accent hover:bg-accent/90 shadow-xl text-accent-foreground font-bold transition-all"
-                  onClick={() => setClockOutOpen(true)}
-                  disabled={loading}
-                >
-                  <ArrowRight className="h-8 w-8" />
-                  <span className="text-xl">Finalize Handover</span>
-                  <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Target: {profile?.shiftEnd || "17:00"}</span>
-                </Button>
+                
+                <div className="space-y-4">
+                  <Button 
+                    className="w-full h-28 rounded-3xl flex flex-col gap-2 bg-accent hover:bg-accent/90 shadow-xl text-accent-foreground font-bold transition-all"
+                    onClick={() => setClockOutOpen(true)}
+                    disabled={loading}
+                  >
+                    <ArrowRight className="h-8 w-8" />
+                    <span className="text-xl uppercase tracking-tight">Finalize Handover</span>
+                    <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Clinical Protocol Required</span>
+                  </Button>
+                  <p className="text-center text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Scanned presence verified at entrance</p>
+                </div>
               </div>
             )}
           </CardContent>
@@ -302,7 +309,11 @@ export default function StaffPage() {
           </DialogHeader>
           <div className="space-y-8">
             <div className="space-y-4">
-              <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Clinical Sentiment Score</Label>
+              <div className="flex items-center gap-2 mb-2">
+                <Heart className="h-4 w-4 text-primary" />
+                <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Clinical Sentiment Score</Label>
+              </div>
+              <p className="text-[10px] text-muted-foreground italic leading-tight mb-2">This helps administration monitor institutional morale and prevent departmental burnout.</p>
               <div className="flex justify-between gap-3">
                 {[
                   { v: 3, label: 'Smooth', icon: Smile, color: 'text-green-600', bg: 'bg-green-600/10', border: 'border-green-600' },
@@ -321,7 +332,11 @@ export default function StaffPage() {
               </div>
             </div>
             <div className="space-y-4">
-              <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Handover Synthesis (Required)</Label>
+              <div className="flex items-center gap-2 mb-2">
+                <BrainCircuit className="h-4 w-4 text-primary" />
+                <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Handover Synthesis (Required)</Label>
+              </div>
+              <p className="text-[10px] text-muted-foreground italic leading-tight mb-2">Gemini AI will synthesize these notes to highlight critical patient issues for the next shift.</p>
               <Textarea placeholder="Critical patient status, clinical flags, pending tasks..." className="min-h-[160px] rounded-2xl p-4 bg-muted/30 border-none text-sm font-medium" value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
             <Button className="w-full h-14 text-xl font-bold rounded-2xl shadow-2xl" disabled={!mood || !notes || loading} onClick={handleClockOut}>
