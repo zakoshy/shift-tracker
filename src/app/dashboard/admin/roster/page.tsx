@@ -81,11 +81,14 @@ export default function StaffRosterPage() {
 
   const { data: staff, loading } = useCollection<UserProfile>(staffQuery);
 
-  const inviteUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/join/${profile?.organizationId}`
-    : "";
+  // Stable invite URL calculation
+  const inviteUrl = useMemo(() => {
+    if (typeof window === 'undefined' || !profile?.organizationId) return "";
+    return `${window.location.origin}/join/${profile.organizationId}`;
+  }, [profile?.organizationId]);
 
   const handleCopyLink = () => {
+    if (!inviteUrl) return;
     navigator.clipboard.writeText(inviteUrl);
     setCopied(true);
     toast({ title: "Link Copied", description: "Invite link copied to clipboard." });
@@ -126,8 +129,6 @@ export default function StaffRosterPage() {
     if (!profile?.organizationId) return;
     setIsCreating(true);
     
-    // Note: Creating Auth users on client signs the creator out. 
-    // We inform the user in the UI, but we perform the registration.
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, manualEmail, manualPassword);
       const newUser = userCredential.user;
@@ -143,14 +144,10 @@ export default function StaffRosterPage() {
       });
 
       toast({ title: "Staff Created", description: `${manualName} has been added to the system.` });
-      // Reset form
       setManualName("");
       setManualEmail("");
       setManualPassword("");
       setManualDept("");
-      
-      // Since Auth signs out on client-side registration, we might be signed out now.
-      // The layout useEffect will handle redirection.
     } catch (error: any) {
       toast({ title: "Creation Failed", description: error.message, variant: "destructive" });
     } finally {
@@ -177,7 +174,7 @@ export default function StaffRosterPage() {
             <DialogHeader>
               <DialogTitle className="text-2xl font-headline font-bold">Onboarding Protocol</DialogTitle>
               <DialogDescription>
-                Select a method to bring new personnel into {organization?.name}.
+                Select a method to bring new personnel into {organization?.name || "the facility"}.
               </DialogDescription>
             </DialogHeader>
             
@@ -195,7 +192,7 @@ export default function StaffRosterPage() {
               
               <TabsContent value="qr" className="space-y-6">
                 <div className="flex flex-col items-center space-y-6 py-4">
-                  <div className="bg-white p-6 rounded-2xl border-2 border-primary/10 shadow-md flex items-center justify-center">
+                  <div className="bg-white p-6 rounded-2xl border-2 border-primary/10 shadow-md flex items-center justify-center min-h-[220px]">
                     {inviteUrl ? (
                       <QRCodeSVG 
                         value={inviteUrl} 
@@ -205,21 +202,30 @@ export default function StaffRosterPage() {
                         className="text-primary"
                       />
                     ) : (
-                      <QrCode className="h-48 w-48 text-muted-foreground animate-pulse" />
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                        <span className="text-xs text-muted-foreground">Generating secure link...</span>
+                      </div>
                     )}
                   </div>
                   
                   <div className="w-full space-y-2">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-center">Registration URL</p>
-                    <div className="flex items-center gap-2 p-2 bg-muted rounded-lg border text-xs font-mono break-all">
-                      <span className="flex-1">{inviteUrl}</span>
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleCopyLink}>
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded-lg border text-xs font-mono break-all min-h-[40px]">
+                      <span className="flex-1">{inviteUrl || "Loading organization ID..."}</span>
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        className="h-8 w-8" 
+                        onClick={handleCopyLink}
+                        disabled={!inviteUrl}
+                      >
                         {copied ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                       </Button>
                     </div>
                   </div>
-                  <p className="text-xs text-center text-muted-foreground italic">
-                    Staff scan this to self-register their identity and department.
+                  <p className="text-xs text-center text-muted-foreground italic max-w-sm">
+                    Staff scan this QR code to self-register their identity and assign themselves to a clinical department.
                   </p>
                 </div>
               </TabsContent>
@@ -248,7 +254,7 @@ export default function StaffRosterPage() {
                   <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 flex gap-3">
                     <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
                     <p className="text-xs text-amber-700 font-medium">
-                      Note: Manually creating a user account will securely log you out for institutional verification. Recommended for offline onboarding.
+                      Note: Manually creating a user account will securely log you out for institutional verification. Recommended for controlled onboarding.
                     </p>
                   </div>
                   
@@ -269,7 +275,7 @@ export default function StaffRosterPage() {
               <Users className="h-5 w-5 text-primary" />
               Registered Personnel
             </CardTitle>
-            <CardDescription>Total active staff profiles within {organization?.name}</CardDescription>
+            <CardDescription>Total active staff profiles within {organization?.name || "your organization"}</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
