@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -66,40 +67,25 @@ export default function StaffPage() {
       setLocationStatus('failed');
       return;
     }
-
     setLocationStatus('checking');
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const userLat = position.coords.latitude;
         const userLng = position.coords.longitude;
         setCoords({ lat: userLat, lng: userLng });
-
         if (!organization?.latitude || !organization?.longitude) {
           setLocationStatus('verified');
           return;
         }
-
-        const distance = calculateDistance(
-          userLat, 
-          userLng, 
-          organization.latitude, 
-          organization.longitude
-        );
-
+        const distance = calculateDistance(userLat, userLng, organization.latitude, organization.longitude);
         if (distance <= (organization.radiusInMeters || 200)) {
           setLocationStatus('verified');
         } else {
           setLocationStatus('outside');
-          toast({ 
-            title: "Outside Perimeter", 
-            description: `You are currently ${(distance / 1000).toFixed(2)}km away from the facility.`, 
-            variant: "destructive" 
-          });
+          toast({ title: "Perimeter Violation", description: "GPS positioning outside institutional geofence.", variant: "destructive" });
         }
       },
-      (error) => {
-        setLocationStatus('denied');
-      },
+      () => setLocationStatus('denied'),
       { enableHighAccuracy: true }
     );
   };
@@ -114,28 +100,32 @@ export default function StaffPage() {
       where("date", "==", today),
       limit(1)
     );
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      setAttendance({ id: snap.docs[0].id, ...snap.docs[0].data() } as AttendanceLog);
-    } else {
-      setAttendance(null);
+    try {
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        setAttendance({ id: snap.docs[0].id, ...snap.docs[0].data() } as AttendanceLog);
+      } else {
+        setAttendance(null);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleClockIn = async () => {
     if (!profile || !db || locationStatus !== 'verified') {
-      toast({ title: "Security Failure", description: "GPS verification required.", variant: "destructive" });
+      toast({ title: "Security Failure", description: "GPS verification required for arrival.", variant: "destructive" });
       return;
     }
-
     setLoading(true);
     const now = new Date();
     const todayStr = format(now, 'yyyy-MM-dd');
     const timeStr = format(now, 'HH:mm:ss');
     
+    // Determine lateness based on individual shift start
+    const [startH, startM] = (profile.shiftStart || "08:00").split(':').map(Number);
     const lateThreshold = new Date();
-    lateThreshold.setHours(8, 0, 0);
+    lateThreshold.setHours(startH, startM, 0);
     const status = now > lateThreshold ? 'late' : 'on-time';
 
     const newLogRef = doc(collection(db, "attendance_logs"));
@@ -154,17 +144,12 @@ export default function StaffPage() {
       verifiedAt: now.toISOString(),
       verifiedLocation: coords,
     };
-
     try {
       await setDoc(newLogRef, newLog);
       setAttendance(newLog as AttendanceLog);
-      toast({
-        title: status === 'late' ? "Late Arrival Recorded" : "Clocked In",
-        description: `Verified at ${format(now, 'hh:mm a')}`,
-        variant: status === 'late' ? "destructive" : "default",
-      });
+      toast({ title: status === 'late' ? "Late Arrival Noted" : "Clocked In", description: `Arrival verified at ${format(now, 'hh:mm a')}`, variant: status === 'late' ? "destructive" : "default" });
     } catch (err) {
-      toast({ title: "Error", description: "Failed to clock in", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to log shift start.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -176,13 +161,14 @@ export default function StaffPage() {
     const now = new Date();
     const timeStr = format(now, 'HH:mm:ss');
     
+    // Determine early departure based on individual shift end
+    const [endH, endM] = (profile.shiftEnd || "17:00").split(':').map(Number);
     const earlyThreshold = new Date();
-    earlyThreshold.setHours(17, 0, 0);
+    earlyThreshold.setHours(endH, endM, 0);
     let status = attendance.status;
     if (now < earlyThreshold) {
       status = 'early-departure';
     }
-
     try {
       await setDoc(doc(db, "attendance_logs", attendance.id), {
         clockOutTime: timeStr,
@@ -190,15 +176,11 @@ export default function StaffPage() {
         moodRating: mood,
         handoverNotes: notes,
       }, { merge: true });
-      
       setAttendance(prev => prev ? { ...prev, clockOutTime: timeStr, moodRating: mood, handoverNotes: notes, status } : null);
       setClockOutOpen(false);
-      toast({
-        title: "Shift Completed",
-        description: "Handover secured and shift finalized.",
-      });
+      toast({ title: "Shift Secured", description: "Clinical handover synchronized." });
     } catch (err) {
-      toast({ title: "Error", description: "Failed to clock out", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to finalize shift.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -207,131 +189,105 @@ export default function StaffPage() {
   if (authLoading) return null;
 
   return (
-    <div className="space-y-6 flex flex-col items-center max-w-lg mx-auto">
+    <div className="space-y-6 flex flex-col items-center max-w-lg mx-auto pb-12">
       <div className="text-center space-y-2 mb-2">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-widest mb-2 border border-primary/20">
-          <ShieldCheck className="h-3 w-3" />
-          Secure Protocol
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-[0.2em] mb-4 border border-primary/20">
+          <ShieldCheck className="h-4 w-4" />
+          Protocol Verified
         </div>
-        <h1 className="text-3xl font-headline font-bold text-foreground">Shift Verification</h1>
-        <div className="flex items-center justify-center gap-2 text-muted-foreground bg-muted/50 px-4 py-2 rounded-xl border">
-          <Stethoscope className="h-4 w-4 text-primary" />
-          <span className="text-xs font-bold uppercase tracking-tight">Active Rotation: <span className="text-foreground">{profile?.department}</span></span>
+        <h1 className="text-4xl font-headline font-black text-foreground tracking-tight">Shift Verification</h1>
+        <div className="flex items-center justify-center gap-3 bg-card p-3 rounded-2xl border shadow-sm">
+          <Stethoscope className="h-5 w-5 text-primary" />
+          <div className="text-left">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground leading-none mb-1">Active Rotation</p>
+            <p className="text-sm font-bold text-foreground leading-none">{profile?.department}</p>
+          </div>
         </div>
       </div>
 
       <div className="w-full">
-        <Card className="shadow-2xl border-none overflow-hidden bg-card">
-          <div className="bg-primary p-8 text-center text-primary-foreground relative">
-            <div className="absolute top-4 left-4 opacity-10">
-              <MapPin className="h-12 w-12" />
+        <Card className="shadow-[0_20px_60px_rgba(0,0,0,0.1)] border-none overflow-hidden rounded-[2.5rem]">
+          <div className="bg-[#002B5B] p-10 text-center text-white relative">
+            <div className="absolute top-6 left-6 opacity-5"><MapPin className="h-20 w-20" /></div>
+            <div className="text-7xl font-mono font-black tracking-tighter mb-2">
+              {format(currentDate, 'HH:mm')}
+              <span className="text-2xl ml-2 opacity-40 font-bold">{format(currentDate, 'ss')}</span>
             </div>
-            <div className="text-6xl font-mono font-bold tracking-tighter mb-1">
-              {format(currentDate, 'hh:mm')}
-              <span className="text-2xl ml-1 opacity-60">{format(currentDate, 'ss')}</span>
-            </div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em] opacity-80">{format(currentDate, 'EEEE, MMMM do')}</p>
+            <p className="text-[12px] font-bold uppercase tracking-[0.4em] opacity-60">{format(currentDate, 'EEEE, MMMM do')}</p>
           </div>
 
-          <CardContent className="p-8 space-y-6">
+          <CardContent className="p-10 space-y-8">
             <div className={cn(
-              "flex items-center justify-between p-3 rounded-xl border-2 transition-all",
-              locationStatus === 'verified' ? "bg-green-500/10 border-green-500/20 text-green-600" :
-              locationStatus === 'checking' ? "bg-muted border-muted-foreground/10 text-muted-foreground" :
-              "bg-destructive/10 border-destructive/20 text-destructive"
+              "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
+              locationStatus === 'verified' ? "bg-green-500/5 border-green-500/20 text-green-600" :
+              locationStatus === 'checking' ? "bg-muted/50 border-muted text-muted-foreground" :
+              "bg-destructive/5 border-destructive/20 text-destructive"
             )}>
               <div className="flex items-center gap-3">
-                {locationStatus === 'verified' ? <LocateFixed className="h-4 w-4" /> :
-                 locationStatus === 'checking' ? <Loader2 className="h-4 w-4 animate-spin" /> :
-                 <ShieldX className="h-4 w-4" />}
-                <span className="text-[10px] font-bold uppercase tracking-widest">
+                {locationStatus === 'verified' ? <LocateFixed className="h-5 w-5" /> :
+                 locationStatus === 'checking' ? <Loader2 className="h-5 w-5 animate-spin" /> :
+                 <ShieldX className="h-5 w-5" />}
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em]">
                   {locationStatus === 'verified' ? "Institutional Perimeter Locked" :
                    locationStatus === 'checking' ? "Acquiring GPS Signal..." :
                    locationStatus === 'denied' ? "GPS Access Denied" : 
-                   locationStatus === 'outside' ? "Outside Geofence" : "GPS Signal Lost"}
+                   locationStatus === 'outside' ? "Outside Geofence" : "No GPS Link"}
                 </span>
               </div>
-              <Button variant="ghost" size="sm" className="h-6 text-[9px] font-bold uppercase" onClick={verifyLocation}>
-                Recalibrate
-              </Button>
+              <Button variant="ghost" size="sm" className="h-7 text-[9px] font-bold uppercase border hover:bg-white" onClick={verifyLocation}>Recalibrate</Button>
             </div>
 
             {!attendance ? (
               <div className="space-y-6">
                 <Button 
-                  className={cn(
-                    "w-full h-24 text-xl rounded-2xl flex flex-col gap-1 shadow-lg transition-all",
-                    locationStatus === 'verified' 
-                      ? "bg-primary shadow-primary/20 hover:scale-[1.02]" 
-                      : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
-                  )}
+                  className={cn("w-full h-28 rounded-3xl flex flex-col gap-2 shadow-2xl transition-all", locationStatus === 'verified' ? "bg-primary shadow-primary/20 hover:scale-[1.02]" : "bg-muted text-muted-foreground opacity-60 cursor-not-allowed")}
                   onClick={handleClockIn}
                   disabled={loading || locationStatus !== 'verified'}
                 >
-                  {loading ? <Loader2 className="animate-spin h-6 w-6" /> : (
+                  {loading ? <Loader2 className="animate-spin h-8 w-8" /> : (
                     <>
-                      <Clock className="h-6 w-6 mb-1" />
-                      Verify Morning Arrival
-                      <span className="text-[10px] font-normal opacity-70">Shift Standard: 08:00 AM</span>
+                      <Clock className="h-8 w-8" />
+                      <span className="text-xl font-bold">Authorize Arrival</span>
+                      <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Scheduled: {profile?.shiftStart || "08:00"}</span>
                     </>
                   )}
                 </Button>
-                <div className="p-4 bg-amber-500/5 rounded-xl border border-amber-500/10 flex gap-3">
-                  <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
-                  <p className="text-[10px] text-amber-600 leading-relaxed font-medium">
-                    Clock-ins after 08:00 AM are automatically flagged as late arrivals for institutional reporting.
-                  </p>
-                </div>
               </div>
             ) : attendance.clockOutTime ? (
-              <div className="py-4 flex flex-col items-center text-center space-y-6">
-                <div className="h-20 w-20 bg-green-500/10 rounded-full flex items-center justify-center border-4 border-background shadow-lg">
-                  <CheckCircle2 className="h-10 w-10 text-green-500" />
+              <div className="py-8 flex flex-col items-center text-center space-y-8">
+                <div className="h-24 w-24 bg-green-500/10 rounded-full flex items-center justify-center border-4 border-white shadow-xl">
+                  <CheckCircle2 className="h-12 w-12 text-green-600" />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-headline font-bold text-foreground">Shift Secured</h3>
-                  <p className="text-muted-foreground text-sm max-w-[240px]">Departure and clinical handover data encrypted.</p>
+                  <h3 className="text-3xl font-headline font-black text-foreground">Shift Completed</h3>
+                  <p className="text-muted-foreground text-sm font-medium mt-2">Intelligence handover successfully synchronized.</p>
                 </div>
-                <div className="grid grid-cols-2 gap-4 w-full pt-2">
-                  <div className="bg-muted/50 p-4 rounded-2xl border flex flex-col items-center">
-                    <span className="text-[10px] text-muted-foreground uppercase font-bold mb-1">Arrival</span>
-                    <span className="text-xl font-bold font-mono">{attendance.clockInTime?.substring(0, 5)}</span>
-                  </div>
-                  <div className="bg-muted/50 p-4 rounded-2xl border flex flex-col items-center">
-                    <span className="text-[10px] text-muted-foreground uppercase font-bold mb-1">Departure</span>
-                    <span className="text-xl font-bold font-mono">{attendance.clockOutTime?.substring(0, 5)}</span>
-                  </div>
+                <div className="grid grid-cols-2 gap-4 w-full">
+                  <div className="bg-muted/30 p-6 rounded-3xl border flex flex-col items-center"><span className="text-[10px] font-bold text-muted-foreground uppercase mb-2">In</span><span className="text-2xl font-black font-mono">{attendance.clockInTime?.substring(0, 5)}</span></div>
+                  <div className="bg-muted/30 p-6 rounded-3xl border flex flex-col items-center"><span className="text-[10px] font-bold text-muted-foreground uppercase mb-2">Out</span><span className="text-2xl font-black font-mono">{attendance.clockOutTime?.substring(0, 5)}</span></div>
                 </div>
               </div>
             ) : (
               <div className="space-y-8">
-                <div className="bg-green-500/10 rounded-2xl p-5 flex items-center justify-between border border-green-500/20">
+                <div className="bg-green-600/5 rounded-3xl p-6 flex items-center justify-between border border-green-600/10">
                   <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 bg-green-500/20 rounded-xl flex items-center justify-center">
-                      <Clock className="h-6 w-6 text-green-600" />
-                    </div>
+                    <div className="h-14 w-14 bg-green-600/10 rounded-2xl flex items-center justify-center"><Clock className="h-7 w-7 text-green-600" /></div>
                     <div>
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-green-600">Active Session</p>
-                      <p className="text-lg font-bold text-foreground">
-                        {attendance.clockInTime?.substring(0, 5)} 
-                        {attendance.status === 'late' && <span className="text-[10px] bg-destructive text-destructive-foreground px-2 py-0.5 rounded-full ml-2 font-bold uppercase tracking-tighter">Late</span>}
-                      </p>
+                      <p className="text-[10px] uppercase font-bold tracking-[0.2em] text-green-600 mb-1">Session Active</p>
+                      <p className="text-2xl font-black text-foreground font-mono">{attendance.clockInTime?.substring(0, 5)}</p>
                     </div>
                   </div>
+                  {attendance.status === 'late' && <Badge variant="destructive" className="h-6 px-3 text-[10px] font-bold uppercase">Late</Badge>}
                 </div>
-
-                <div className="space-y-4">
-                  <Button 
-                    className="w-full h-24 text-xl rounded-2xl flex flex-col gap-1 bg-accent hover:bg-accent/90 shadow-lg text-accent-foreground font-bold transition-all"
-                    onClick={() => setClockOutOpen(true)}
-                    disabled={loading}
-                  >
-                    <ArrowRight className="h-6 w-6 mb-1" />
-                    Finalize Shift
-                    <span className="text-[10px] font-normal opacity-70">Shift Standard: 05:00 PM</span>
-                  </Button>
-                  <p className="text-center text-[10px] text-muted-foreground font-medium italic">Protocol active since clock-in.</p>
-                </div>
+                <Button 
+                  className="w-full h-28 rounded-3xl flex flex-col gap-2 bg-accent hover:bg-accent/90 shadow-xl text-accent-foreground font-bold transition-all"
+                  onClick={() => setClockOutOpen(true)}
+                  disabled={loading}
+                >
+                  <ArrowRight className="h-8 w-8" />
+                  <span className="text-xl">Finalize Handover</span>
+                  <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Target: {profile?.shiftEnd || "17:00"}</span>
+                </Button>
               </div>
             )}
           </CardContent>
@@ -339,56 +295,39 @@ export default function StaffPage() {
       </div>
 
       <Dialog open={clockOutOpen} onOpenChange={setClockOutOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-headline font-bold">Departure Protocol</DialogTitle>
-            <DialogDescription>Submit clinical handover intelligence and staff well-being score.</DialogDescription>
+        <DialogContent className="sm:max-w-[425px] rounded-[2rem] p-8">
+          <DialogHeader className="mb-6">
+            <DialogTitle className="text-3xl font-headline font-black">Departure Protocol</DialogTitle>
+            <DialogDescription className="text-sm font-medium">Capture clinical intelligence and personnel well-being.</DialogDescription>
           </DialogHeader>
-          
-          <div className="space-y-6 py-4">
-            <div className="space-y-3">
-              <Label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Shift Sentiment Score</Label>
+          <div className="space-y-8">
+            <div className="space-y-4">
+              <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Clinical Sentiment Score</Label>
               <div className="flex justify-between gap-3">
                 {[
-                  { v: 3, label: 'Smooth', icon: Smile, color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500' },
-                  { v: 2, label: 'Hectic', icon: Meh, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500' },
-                  { v: 1, label: 'Stressed', icon: Frown, color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500' }
+                  { v: 3, label: 'Smooth', icon: Smile, color: 'text-green-600', bg: 'bg-green-600/10', border: 'border-green-600' },
+                  { v: 2, label: 'Hectic', icon: Meh, color: 'text-amber-600', bg: 'bg-amber-600/10', border: 'border-amber-600' },
+                  { v: 1, label: 'Stress', icon: Frown, color: 'text-red-600', bg: 'bg-red-600/10', border: 'border-red-600' }
                 ].map((m) => (
                   <button 
                     key={m.v}
                     onClick={() => setMood(m.v as MoodRating)}
-                    className={cn(
-                      "flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all",
-                      mood === m.v ? `${m.bg} ${m.border}` : "bg-card border-border grayscale hover:grayscale-0 hover:bg-muted"
-                    )}
+                    className={cn("flex-1 flex flex-col items-center gap-2 p-5 rounded-3xl border-2 transition-all", mood === m.v ? `${m.bg} ${m.border}` : "bg-muted/50 border-transparent grayscale opacity-40 hover:grayscale-0 hover:opacity-100")}
                   >
-                    <m.icon className={cn("h-8 w-8", mood === m.v ? m.color : "text-muted-foreground")} />
+                    <m.icon className={cn("h-10 w-10", mood === m.v ? m.color : "text-muted-foreground")} />
                     <span className="text-[10px] font-bold uppercase tracking-tighter">{m.label}</span>
                   </button>
                 ))}
               </div>
             </div>
-
-            <div className="space-y-3">
-              <Label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Handover Notes (Mandatory)</Label>
-              <Textarea 
-                placeholder="Include critical patient updates, pending procedures, or equipment failures..."
-                className="min-h-[140px] rounded-xl"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
+            <div className="space-y-4">
+              <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Handover Synthesis (Required)</Label>
+              <Textarea placeholder="Critical patient status, clinical flags, pending tasks..." className="min-h-[160px] rounded-2xl p-4 bg-muted/30 border-none text-sm font-medium" value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
-          </div>
-
-          <DialogFooter>
-            <Button 
-              className="w-full h-12 text-lg font-bold rounded-xl shadow-lg"
-              disabled={!mood || !notes || loading}
-              onClick={handleClockOut}
-            >
-              {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Authorize & Sign Out"}
+            <Button className="w-full h-14 text-xl font-bold rounded-2xl shadow-2xl" disabled={!mood || !notes || loading} onClick={handleClockOut}>
+              {loading ? <Loader2 className="animate-spin h-6 w-6" /> : "Sign Out & Synchronize"}
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { useFirestore, useAuth, useCollection } from "@/firebase";
 import { collection, query, where, doc, deleteDoc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -40,13 +40,13 @@ import {
   UserPlus, 
   QrCode, 
   Trash2, 
-  Building2,
   Copy,
   CheckCircle2,
   Loader2,
   Edit2,
   UserCheck,
-  AlertTriangle
+  AlertTriangle,
+  Clock
 } from "lucide-react";
 import { UserProfile } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -58,19 +58,18 @@ export default function StaffRosterPage() {
   const auth = useAuth();
   const { toast } = useToast();
   
-  // States
   const [copied, setCopied] = useState(false);
   const [editingStaff, setEditingStaff] = useState<UserProfile | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   
-  // Manual Add Form State
   const [manualName, setManualName] = useState("");
   const [manualEmail, setManualEmail] = useState("");
   const [manualPassword, setManualPassword] = useState("");
   const [manualDept, setManualDept] = useState("");
+  const [manualShiftStart, setManualShiftStart] = useState("08:00");
+  const [manualShiftEnd, setManualShiftEnd] = useState("17:00");
   const [isCreating, setIsCreating] = useState(false);
 
-  // Memoize query to prevent infinite loops
   const staffQuery = useMemo(() => {
     if (!profile?.organizationId) return null;
     return query(
@@ -81,9 +80,8 @@ export default function StaffRosterPage() {
 
   const { data: staff, loading } = useCollection<UserProfile>(staffQuery);
 
-  // Stable invite URL calculation
   const inviteUrl = useMemo(() => {
-    if (typeof window === 'undefined' || !profile?.organizationId) return "";
+    if (typeof window === 'undefined' || !profile?.organizationId || profile.organizationId === "undefined") return "";
     return `${window.location.origin}/join/${profile.organizationId}`;
   }, [profile?.organizationId]);
 
@@ -91,17 +89,17 @@ export default function StaffRosterPage() {
     if (!inviteUrl) return;
     navigator.clipboard.writeText(inviteUrl);
     setCopied(true);
-    toast({ title: "Link Copied", description: "Invite link copied to clipboard." });
+    toast({ title: "Protocol Copied", description: "Onboarding link synchronized." });
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDeleteStaff = async (userId: string, name: string) => {
-    if (confirm(`Are you sure you want to remove ${name} from the roster?`)) {
+    if (confirm(`Remove ${name} from institutional access?`)) {
       try {
         await deleteDoc(doc(db, "users", userId));
-        toast({ title: "Staff Removed", description: `${name} has been removed.` });
+        toast({ title: "Personnel Revoked", description: `${name} has been removed.` });
       } catch (err) {
-        toast({ title: "Error", description: "Failed to remove staff member.", variant: "destructive" });
+        toast({ title: "Error", description: "Authorization failure during removal.", variant: "destructive" });
       }
     }
   };
@@ -114,11 +112,13 @@ export default function StaffRosterPage() {
       await updateDoc(doc(db, "users", editingStaff.uid), {
         name: editingStaff.name,
         department: editingStaff.department,
+        shiftStart: editingStaff.shiftStart || "08:00",
+        shiftEnd: editingStaff.shiftEnd || "17:00",
       });
-      toast({ title: "Profile Updated", description: `${editingStaff.name}'s details have been saved.` });
+      toast({ title: "Profile Secured", description: "Shift and personnel data updated." });
       setEditingStaff(null);
     } catch (err) {
-      toast({ title: "Update Failed", description: "Failed to update staff profile.", variant: "destructive" });
+      toast({ title: "Update Failed", description: "Failed to synchronize profile changes.", variant: "destructive" });
     } finally {
       setIsUpdating(false);
     }
@@ -128,11 +128,9 @@ export default function StaffRosterPage() {
     e.preventDefault();
     if (!profile?.organizationId) return;
     setIsCreating(true);
-    
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, manualEmail, manualPassword);
       const newUser = userCredential.user;
-
       await setDoc(doc(db, "users", newUser.uid), {
         uid: newUser.uid,
         organizationId: profile.organizationId,
@@ -140,14 +138,12 @@ export default function StaffRosterPage() {
         name: manualName,
         role: 'staff',
         department: manualDept,
+        shiftStart: manualShiftStart,
+        shiftEnd: manualShiftEnd,
         createdAt: serverTimestamp(),
       });
-
-      toast({ title: "Staff Created", description: `${manualName} has been added to the system.` });
-      setManualName("");
-      setManualEmail("");
-      setManualPassword("");
-      setManualDept("");
+      toast({ title: "Personnel Added", description: `${manualName} registered successfully.` });
+      setManualName(""); setManualEmail(""); setManualPassword(""); setManualDept("");
     } catch (error: any) {
       toast({ title: "Creation Failed", description: error.message, variant: "destructive" });
     } finally {
@@ -157,109 +153,87 @@ export default function StaffRosterPage() {
 
   return (
     <div className="space-y-8 pb-12">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6">
         <div>
-          <h1 className="text-3xl font-headline font-bold text-foreground">Staff Roster</h1>
-          <p className="text-muted-foreground">Manage your institution's workforce and onboarding protocols.</p>
+          <h1 className="text-3xl font-headline font-extrabold text-foreground tracking-tight">Institutional Roster</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage personnel authorization and shift configurations.</p>
         </div>
-        
         <Dialog>
           <DialogTrigger asChild>
-            <Button className="shadow-lg shadow-primary/20">
+            <Button className="rounded-xl shadow-lg bg-primary hover:bg-primary/90 px-6">
               <UserPlus className="mr-2 h-4 w-4" />
-              Onboard New Staff
+              Onboard Personnel
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl">
+          <DialogContent className="sm:max-w-2xl rounded-3xl">
             <DialogHeader>
               <DialogTitle className="text-2xl font-headline font-bold">Onboarding Protocol</DialogTitle>
-              <DialogDescription>
-                Select a method to bring new personnel into {organization?.name || "the facility"}.
-              </DialogDescription>
+              <DialogDescription>Authorize new staff via automated link or manual registration.</DialogDescription>
             </DialogHeader>
-            
             <Tabs defaultValue="qr" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="qr" className="gap-2">
-                  <QrCode className="h-4 w-4" />
-                  Invite Link / QR
-                </TabsTrigger>
-                <TabsTrigger value="manual" className="gap-2">
-                  <UserCheck className="h-4 w-4" />
-                  Manual Entry
-                </TabsTrigger>
+              <TabsList className="grid w-full grid-cols-2 mb-6 bg-muted/50 p-1 rounded-xl">
+                <TabsTrigger value="qr" className="rounded-lg">Secure Invite</TabsTrigger>
+                <TabsTrigger value="manual" className="rounded-lg">Manual Entry</TabsTrigger>
               </TabsList>
-              
               <TabsContent value="qr" className="space-y-6">
-                <div className="flex flex-col items-center space-y-6 py-4">
-                  <div className="bg-white p-6 rounded-2xl border-2 border-primary/10 shadow-md flex items-center justify-center min-h-[220px]">
+                <div className="flex flex-col items-center py-6 space-y-6">
+                  <div className="bg-white p-6 rounded-[2rem] border-2 border-primary/10 shadow-xl flex items-center justify-center min-h-[240px]">
                     {inviteUrl ? (
-                      <QRCodeSVG 
-                        value={inviteUrl} 
-                        size={180} 
-                        level="H" 
-                        includeMargin={false}
-                        className="text-primary"
-                      />
+                      <QRCodeSVG value={inviteUrl} size={200} level="H" className="text-primary" />
                     ) : (
                       <div className="flex flex-col items-center gap-2">
                         <Loader2 className="h-10 w-10 text-primary animate-spin" />
-                        <span className="text-xs text-muted-foreground">Generating secure link...</span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Generating Token...</span>
                       </div>
                     )}
                   </div>
-                  
                   <div className="w-full space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-center">Registration URL</p>
-                    <div className="flex items-center gap-2 p-2 bg-muted rounded-lg border text-xs font-mono break-all min-h-[40px]">
-                      <span className="flex-1">{inviteUrl || "Loading organization ID..."}</span>
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        className="h-8 w-8" 
-                        onClick={handleCopyLink}
-                        disabled={!inviteUrl}
-                      >
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground text-center">Registration Endpoint</p>
+                    <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl border font-mono text-xs break-all">
+                      <span className="flex-1 opacity-60">{inviteUrl || "Loading organization context..."}</span>
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleCopyLink} disabled={!inviteUrl}>
                         {copied ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                       </Button>
                     </div>
                   </div>
-                  <p className="text-xs text-center text-muted-foreground italic max-w-sm">
-                    Staff scan this QR code to self-register their identity and assign themselves to a clinical department.
-                  </p>
                 </div>
               </TabsContent>
-              
-              <TabsContent value="manual" className="space-y-4">
-                <form onSubmit={handleManualCreate} className="space-y-4 pt-2">
+              <TabsContent value="manual" className="space-y-4 pt-4">
+                <form onSubmit={handleManualCreate} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="mName">Full Name</Label>
-                      <Input id="mName" value={manualName} onChange={e => setManualName(e.target.value)} placeholder="John Smith" required />
+                    <div className="space-y-1">
+                      <Label htmlFor="mName" className="text-[10px] uppercase font-bold tracking-widest">Full Name</Label>
+                      <Input id="mName" value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Personnel Name" required className="rounded-xl" />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="mDept">Department</Label>
-                      <Input id="mDept" value={manualDept} onChange={e => setManualDept(e.target.value)} placeholder="ER, Nursing..." required />
+                    <div className="space-y-1">
+                      <Label htmlFor="mDept" className="text-[10px] uppercase font-bold tracking-widest">Department</Label>
+                      <Input id="mDept" value={manualDept} onChange={e => setManualDept(e.target.value)} placeholder="e.g., ICU, ER" required className="rounded-xl" />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="mEmail">Email Address</Label>
-                    <Input id="mEmail" type="email" value={manualEmail} onChange={e => setManualEmail(e.target.value)} placeholder="john@org.com" required />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="mShiftS" className="text-[10px] uppercase font-bold tracking-widest">Shift Start</Label>
+                      <Input id="mShiftS" type="time" value={manualShiftStart} onChange={e => setManualShiftStart(e.target.value)} required className="rounded-xl" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="mShiftE" className="text-[10px] uppercase font-bold tracking-widest">Shift End</Label>
+                      <Input id="mShiftE" type="time" value={manualShiftEnd} onChange={e => setManualShiftEnd(e.target.value)} required className="rounded-xl" />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="mPass">Initial Password</Label>
-                    <Input id="mPass" type="password" value={manualPassword} onChange={e => setManualPassword(e.target.value)} placeholder="••••••••" required />
+                  <div className="space-y-1">
+                    <Label htmlFor="mEmail" className="text-[10px] uppercase font-bold tracking-widest">Work Email</Label>
+                    <Input id="mEmail" type="email" value={manualEmail} onChange={e => setManualEmail(e.target.value)} placeholder="email@facility.com" required className="rounded-xl" />
                   </div>
-                  
-                  <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 flex gap-3">
-                    <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
-                    <p className="text-xs text-amber-700 font-medium">
-                      Note: Manually creating a user account will securely log you out for institutional verification. Recommended for controlled onboarding.
-                    </p>
+                  <div className="space-y-1">
+                    <Label htmlFor="mPass" className="text-[10px] uppercase font-bold tracking-widest">Temp Password</Label>
+                    <Input id="mPass" type="password" value={manualPassword} onChange={e => setManualPassword(e.target.value)} placeholder="••••••••" required className="rounded-xl" />
                   </div>
-                  
-                  <Button className="w-full" type="submit" disabled={isCreating}>
-                    {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <><UserCheck className="mr-2 h-4 w-4" /> Register & Finalize Profile</>}
+                  <div className="bg-amber-500/5 p-4 rounded-xl border border-amber-500/10 flex gap-3">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                    <p className="text-[10px] text-amber-700 font-bold leading-tight uppercase tracking-tight">Manual creation bypasses invitation protocols and may require secondary verification.</p>
+                  </div>
+                  <Button className="w-full h-12 rounded-xl" type="submit" disabled={isCreating}>
+                    {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Authorize & Register Profile"}
                   </Button>
                 </form>
               </TabsContent>
@@ -269,72 +243,58 @@ export default function StaffRosterPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 shadow-sm border-primary/5">
-          <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2">
+        <Card className="lg:col-span-2 shadow-sm border-none bg-card">
+          <CardHeader className="border-b pb-6">
+            <CardTitle className="text-lg flex items-center gap-3">
               <Users className="h-5 w-5 text-primary" />
-              Registered Personnel
+              Verified Workforce
             </CardTitle>
-            <CardDescription>Total active staff profiles within {organization?.name || "your organization"}</CardDescription>
+            <CardDescription className="text-xs uppercase font-bold tracking-widest opacity-60">Database of authorized institutional staff</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             {loading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="h-8 w-8 text-primary animate-spin" />
-              </div>
+              <div className="flex justify-center py-20"><Loader2 className="h-10 w-10 text-primary animate-spin" /></div>
             ) : !staff || staff.length === 0 ? (
-              <div className="text-center py-12 border-2 border-dashed rounded-xl">
-                <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-20" />
-                <p className="text-muted-foreground">No staff members registered yet.</p>
-              </div>
+              <div className="text-center py-20 opacity-20"><Users className="h-16 w-16 mx-auto" /></div>
             ) : (
               <Table>
-                <TableHeader>
+                <TableHeader className="bg-muted/30">
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Name</TableHead>
+                    <TableHead className="text-[10px] font-bold uppercase tracking-widest">Shift Profile</TableHead>
+                    <TableHead className="text-[10px] font-bold uppercase tracking-widest">Department</TableHead>
+                    <TableHead className="text-right pr-6">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {staff.map((member) => (
-                    <TableRow key={member.uid}>
-                      <TableCell className="font-bold">
+                    <TableRow key={member.uid} className="hover:bg-muted/10">
+                      <TableCell className="pl-6 font-bold text-sm">
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs">
+                          <div className="h-8 w-8 rounded-full bg-primary/5 text-primary border flex items-center justify-center text-[10px] font-black">
                             {member.name.charAt(0)}
                           </div>
                           {member.name}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="bg-muted/50 text-[10px] font-bold uppercase">
-                          {member.department}
+                        <Badge variant="outline" className="rounded-lg text-[9px] font-mono border-muted">
+                          <Clock className="h-3 w-3 mr-1 opacity-40" />
+                          {member.shiftStart} - {member.shiftEnd}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={member.role === 'admin' ? 'default' : 'secondary'} className="capitalize">
-                          {member.role}
+                        <Badge variant="secondary" className="rounded-lg text-[9px] font-bold uppercase bg-muted/50 border-none">
+                          {member.department}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="text-muted-foreground hover:text-primary"
-                            onClick={() => setEditingStaff(member)}
-                          >
+                      <TableCell className="text-right pr-6">
+                        <div className="flex justify-end gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingStaff(member)}>
                             <Edit2 className="h-4 w-4" />
                           </Button>
                           {member.uid !== profile?.uid && (
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-muted-foreground hover:text-destructive"
-                              onClick={() => handleDeleteStaff(member.uid, member.name)}
-                            >
+                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-destructive" onClick={() => handleDeleteStaff(member.uid, member.name)}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           )}
@@ -349,78 +309,54 @@ export default function StaffRosterPage() {
         </Card>
 
         <div className="space-y-6">
-          <Card className="bg-primary text-primary-foreground border-none shadow-lg">
+          <Card className="bg-[#002B5B] text-white border-none shadow-xl rounded-[2rem]">
             <CardHeader>
-              <CardTitle className="text-lg">Facility Stats</CardTitle>
+              <CardTitle className="text-sm font-bold uppercase tracking-[0.2em] opacity-60">System Statistics</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between items-center border-b border-white/10 pb-2">
-                <span className="text-sm opacity-80">Total Staff</span>
-                <span className="text-2xl font-bold">{staff?.length || 0}</span>
+            <CardContent className="space-y-6">
+              <div className="flex justify-between items-end">
+                <span className="text-xs opacity-60 font-bold uppercase">Workforce Size</span>
+                <span className="text-4xl font-black">{staff?.length || 0}</span>
               </div>
-              <div className="flex justify-between items-center border-b border-white/10 pb-2">
-                <span className="text-sm opacity-80">Departments</span>
-                <span className="text-2xl font-bold">
-                  {new Set(staff?.map(s => s.department)).size}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm opacity-80">Administrators</span>
-                <span className="text-2xl font-bold">
-                  {staff?.filter(s => s.role === 'admin').length || 0}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-accent/20 bg-accent/[0.02]">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-bold uppercase tracking-widest text-accent">Management Protocol</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm space-y-3">
-              <div className="flex gap-3">
-                <Edit2 className="h-5 w-5 text-accent shrink-0" />
-                <p className="text-muted-foreground font-medium">Update staff departments manually if they transfer between clinical areas.</p>
-              </div>
-              <div className="flex gap-3">
-                <Building2 className="h-5 w-5 text-accent shrink-0" />
-                <p className="text-muted-foreground">All profile changes are synchronized across attendance logs automatically.</p>
+              <div className="h-px bg-white/10" />
+              <div className="flex justify-between items-end">
+                <span className="text-xs opacity-60 font-bold uppercase">Clinical Units</span>
+                <span className="text-4xl font-black">{new Set(staff?.map(s => s.department)).size}</span>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* Manual Update Dialog */}
+      {/* Profile Update Dialog */}
       <Dialog open={!!editingStaff} onOpenChange={(open) => !open && setEditingStaff(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md rounded-3xl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-headline font-bold">Update Profile</DialogTitle>
-            <DialogDescription>Modify administrative details for {editingStaff?.name}.</DialogDescription>
+            <DialogTitle className="text-2xl font-headline font-bold">Configure Profile</DialogTitle>
+            <DialogDescription>Modify shift timings and departmental assignments.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleUpdateStaff} className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="editName">Personnel Name</Label>
-              <Input 
-                id="editName" 
-                value={editingStaff?.name || ""} 
-                onChange={e => setEditingStaff(prev => prev ? {...prev, name: e.target.value} : null)}
-                required 
-              />
+            <div className="space-y-1">
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Personnel Name</Label>
+              <Input value={editingStaff?.name || ""} onChange={e => setEditingStaff(p => p ? {...p, name: e.target.value} : null)} required className="rounded-xl" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="editDept">Clinical Department</Label>
-              <Input 
-                id="editDept" 
-                value={editingStaff?.department || ""} 
-                onChange={e => setEditingStaff(prev => prev ? {...prev, department: e.target.value} : null)}
-                required 
-              />
+            <div className="space-y-1">
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Clinical Area</Label>
+              <Input value={editingStaff?.department || ""} onChange={e => setEditingStaff(p => p ? {...p, department: e.target.value} : null)} required className="rounded-xl" />
             </div>
-            <DialogFooter className="pt-4">
-              <Button variant="ghost" type="button" onClick={() => setEditingStaff(null)}>Cancel</Button>
-              <Button type="submit" disabled={isUpdating}>
-                {isUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Save Institutional Changes"}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Shift Start</Label>
+                <Input type="time" value={editingStaff?.shiftStart || "08:00"} onChange={e => setEditingStaff(p => p ? {...p, shiftStart: e.target.value} : null)} required className="rounded-xl" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Shift End</Label>
+                <Input type="time" value={editingStaff?.shiftEnd || "17:00"} onChange={e => setEditingStaff(p => p ? {...p, shiftEnd: e.target.value} : null)} required className="rounded-xl" />
+              </div>
+            </div>
+            <DialogFooter className="pt-6">
+              <Button type="submit" disabled={isUpdating} className="w-full h-12 rounded-xl">
+                {isUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Commit Institutional Changes"}
               </Button>
             </DialogFooter>
           </form>

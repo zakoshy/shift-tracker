@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Organization": {
@@ -7,7 +8,10 @@
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "radiusInMeters": { "type": "number" }
       },
       "required": ["id", "name"]
     },
@@ -22,6 +26,8 @@
         "name": { "type": "string" },
         "role": { "type": "string", "enum": ["admin", "staff"] },
         "department": { "type": "string" },
+        "shiftStart": { "type": "string", "description": "HH:mm format, e.g., 08:00" },
+        "shiftEnd": { "type": "string", "description": "HH:mm format, e.g., 17:00" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "organizationId", "email", "name", "role"]

@@ -1,7 +1,7 @@
 
 export type UserRole = 'admin' | 'staff';
 export type AttendanceStatus = 'on-time' | 'late' | 'early-departure' | 'present';
-export type MoodRating = 1 | 2 | 3; // 1: Overwhelmed, 2: Hectic, 3: Smooth
+export type MoodRating = 1 | 2 | 3; // 1: Stressed, 2: Hectic, 3: Smooth
 
 export interface Organization {
   id: string;
@@ -9,7 +9,6 @@ export interface Organization {
   domain?: string;
   logoUrl?: string;
   createdAt: any;
-  // Location for Geofencing
   latitude?: number;
   longitude?: number;
   radiusInMeters?: number;
@@ -22,6 +21,8 @@ export interface UserProfile {
   name: string;
   role: UserRole;
   department: string;
+  shiftStart?: string; // HH:mm
+  shiftEnd?: string;   // HH:mm
   createdAt: any;
 }
 
@@ -37,7 +38,7 @@ export interface AttendanceLog {
   status: AttendanceStatus;
   handoverNotes: string | null;
   moodRating: MoodRating | null;
-  // Security metadata
+  verifiedAt?: string;
   verifiedLocation?: {
     lat: number;
     lng: number;
