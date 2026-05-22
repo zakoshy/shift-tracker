@@ -1,17 +1,18 @@
+
 "use client";
 
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { SidebarNav } from "@/components/dashboard/sidebar-nav";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Loader2, Menu, Activity, X } from "lucide-react";
+import { useEffect } from "react";
+import { Loader2, Menu, Activity, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, profile, organization, loading } = usePulseLogAuth();
+  const { user, profile, loading } = usePulseLogAuth();
   const router = useRouter();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -28,37 +29,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background flex-col md:flex-row">
-      {/* Mobile Top Bar */}
-      <header className="md:hidden flex items-center justify-between p-4 bg-white border-b sticky top-0 z-40">
-        <div className="flex items-center gap-2">
-          <Activity className="h-6 w-6 text-primary" strokeWidth={2.5} />
-          <span className="text-lg font-headline font-bold text-primary">PulseLog</span>
-        </div>
-        <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <Menu className="h-6 w-6" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-64 border-none shadow-xl">
-            <div className="h-full" onClick={() => setIsSidebarOpen(false)}>
-              <SidebarNav />
-            </div>
-          </SheetContent>
-        </Sheet>
-      </header>
-
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:block">
+    <SidebarProvider defaultOpen={true}>
+      <div className="flex h-screen w-full overflow-hidden bg-background">
         <SidebarNav />
-      </aside>
+        
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Dashboard Header */}
+          <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4 md:px-6">
+            <div className="flex items-center gap-2">
+              <SidebarTrigger className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-xl" />
+              <div className="h-4 w-px bg-border mx-2 md:hidden" />
+              <div className="flex items-center gap-2 md:hidden">
+                <Activity className="h-6 w-6 text-primary" strokeWidth={2.5} />
+                <span className="text-lg font-headline font-bold text-primary">PulseLog</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="hidden md:block">
+                <ThemeToggle />
+              </div>
+            </div>
+          </header>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-8">
-        <div className="max-w-7xl mx-auto">
-          {children}
+          <main className="flex-1 overflow-y-auto bg-background/50 p-4 md:p-8">
+            <div className="max-w-7xl mx-auto">
+              {children}
+            </div>
+          </main>
         </div>
-      </main>
-    </div>
+      </div>
+    </SidebarProvider>
   );
 }
