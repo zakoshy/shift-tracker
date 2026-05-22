@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { useFirestore } from "@/firebase";
-import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs, writeBatch, Timestamp } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,9 +21,12 @@ import {
   MapPin,
   Settings,
   ArrowUpRight,
-  ClipboardCheck
+  ClipboardCheck,
+  Trash2,
+  Database,
+  History
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { AttendanceLog } from "@/lib/types";
 import { summarizeHandoverNotes, SummarizeHandoverNotesOutput } from "@/ai/flows/summarize-handover-notes";
 import { useToast } from "@/hooks/use-toast";
@@ -35,7 +38,8 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogDescription,
-  DialogTrigger
+  DialogTrigger,
+  DialogFooter
 } from "@/components/ui/dialog";
 
 export default function AdminDashboard() {
@@ -46,6 +50,7 @@ export default function AdminDashboard() {
   const [aiSummary, setAiSummary] = useState<SummarizeHandoverNotesOutput | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [settingLocation, setSettingLocation] = useState(false);
+  const [cleaningUp, setCleaningUp] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -105,6 +110,42 @@ export default function AdminDashboard() {
     );
   };
 
+  const handleDeleteLog = async (logId: string) => {
+    if (!db || !confirm("Permanently remove this shift record from the institutional log?")) return;
+    try {
+      await deleteDoc(doc(db, "attendance_logs", logId));
+      toast({ title: "Record Deleted", description: "The shift log has been removed." });
+    } catch (err) {
+      toast({ title: "Error", description: "Unauthorized deletion attempt.", variant: "destructive" });
+    }
+  };
+
+  const handleCleanupOldLogs = async () => {
+    if (!db || !profile?.organizationId || !confirm("This will permanently delete all attendance logs older than 30 days. Proceed?")) return;
+    setCleaningUp(true);
+    try {
+      const thirtyDaysAgo = subDays(new Date(), 30);
+      const formattedDate = format(thirtyDaysAgo, 'yyyy-MM-dd');
+      
+      const q = query(
+        collection(db, "attendance_logs"),
+        where("organizationId", "==", profile.organizationId),
+        where("date", "<", formattedDate)
+      );
+      
+      const snap = await getDocs(q);
+      const batch = writeBatch(db);
+      snap.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      
+      toast({ title: "Database Optimized", description: `${snap.size} legacy records purged.` });
+    } catch (err) {
+      toast({ title: "Cleanup Failed", description: "Could not process database maintenance.", variant: "destructive" });
+    } finally {
+      setCleaningUp(false);
+    }
+  };
+
   const handleGenAIReport = async () => {
     const notes = logs.filter(l => l.handoverNotes).map(l => `${l.userName}: ${l.handoverNotes}`);
     if (notes.length === 0) {
@@ -147,21 +188,44 @@ export default function AdminDashboard() {
             </DialogTrigger>
             <DialogContent className="max-w-[90vw] sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Facility Parameters</DialogTitle>
-                <DialogDescription>Manage operational geofencing and perimeter security.</DialogDescription>
+                <DialogTitle>Institutional Configuration</DialogTitle>
+                <DialogDescription>Manage geofencing and database maintenance.</DialogDescription>
               </DialogHeader>
-              <div className="py-4 space-y-4">
-                <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-2xl border">
-                  <MapPin className="h-8 w-8 text-primary" />
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Locked Center</p>
-                    <p className="text-sm font-mono">{organization?.latitude ? `${organization.latitude.toFixed(4)}, ${organization.longitude?.toFixed(4)}` : "Pending"}</p>
+              <div className="py-4 space-y-6">
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
+                    <MapPin className="h-3 w-3" /> Geofence Parameters
+                  </h4>
+                  <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-2xl border">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Locked Center</p>
+                      <p className="text-sm font-mono">{organization?.latitude ? `${organization.latitude.toFixed(4)}, ${organization.longitude?.toFixed(4)}` : "Pending"}</p>
+                    </div>
+                  </div>
+                  <Button onClick={handleSetPerimeter} disabled={settingLocation} variant="outline" className="w-full h-10 rounded-xl">
+                    {settingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MapPin className="mr-2 h-4 w-4" />}
+                    Synchronize GPS Perimeter
+                  </Button>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
+                    <Database className="h-3 w-3" /> Database Retention
+                  </h4>
+                  <div className="p-4 bg-destructive/5 rounded-2xl border border-destructive/10">
+                    <p className="text-[10px] text-destructive font-bold leading-tight uppercase mb-2">Caution: Institutional Purge</p>
+                    <p className="text-xs text-muted-foreground mb-4">Clearing records older than 30 days keeps the system fast and compliant with temporary data storage protocols.</p>
+                    <Button 
+                      onClick={handleCleanupOldLogs} 
+                      disabled={cleaningUp} 
+                      variant="destructive" 
+                      className="w-full h-10 rounded-xl"
+                    >
+                      {cleaningUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <History className="mr-2 h-4 w-4" />}
+                      Purge Legacy Logs (&gt;30 Days)
+                    </Button>
                   </div>
                 </div>
-                <Button onClick={handleSetPerimeter} disabled={settingLocation} className="w-full h-12 rounded-xl">
-                  {settingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MapPin className="mr-2 h-4 w-4" />}
-                  Synchronize GPS Perimeter
-                </Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -307,9 +371,17 @@ export default function AdminDashboard() {
           ) : (
             logs.map((log) => (
               <Card key={log.id} className={cn(
-                "group transition-all rounded-2xl border-none shadow-sm hover:shadow-md",
+                "group relative transition-all rounded-2xl border-none shadow-sm hover:shadow-md",
                 log.clockOutTime ? "bg-muted/30 opacity-70" : "bg-card ring-1 ring-primary/5"
               )}>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => handleDeleteLog(log.id)}
+                  className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
                 <CardHeader className="p-5 pb-0 flex flex-row items-center justify-between space-y-0">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-xl bg-primary/5 text-primary flex items-center justify-center font-black text-sm border border-primary/10">
