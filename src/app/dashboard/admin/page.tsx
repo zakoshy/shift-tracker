@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -62,7 +61,6 @@ export default function AdminDashboard() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AttendanceLog[];
-      // Client-side sort to avoid complex index requirements initially
       const sortedData = [...data].sort((a, b) => {
         const timeA = a.clockInTime || '';
         const timeB = b.clockInTime || '';
@@ -71,7 +69,6 @@ export default function AdminDashboard() {
       setLogs(sortedData);
       setLoading(false);
     }, (error) => {
-      console.error("Firestore error:", error);
       setLoading(false);
     });
 
@@ -101,17 +98,17 @@ export default function AdminDashboard() {
           await updateDoc(doc(db, "organizations", organization.id), {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
-            radiusInMeters: 200, // Default 200m
+            radiusInMeters: 200,
           });
-          toast({ title: "Perimeter Locked", description: "This location is now the institutional clock-in center." });
+          toast({ title: "Perimeter Locked", description: "Institutional check-in center established." });
         } catch (err) {
-          toast({ title: "Error", description: "Failed to update organization location.", variant: "destructive" });
+          toast({ title: "Error", description: "Failed to update location.", variant: "destructive" });
         } finally {
           setSettingLocation(false);
         }
       },
       (error) => {
-        toast({ title: "GPS Error", description: "Could not retrieve your current location.", variant: "destructive" });
+        toast({ title: "GPS Error", description: "Could not retrieve location.", variant: "destructive" });
         setSettingLocation(false);
       }
     );
@@ -120,7 +117,7 @@ export default function AdminDashboard() {
   const handleGenAIReport = async () => {
     const notes = logs.filter(l => l.handoverNotes).map(l => `${l.userName} (${l.userDepartment}): ${l.handoverNotes}`);
     if (notes.length === 0) {
-      toast({ title: "No Data", description: "No handover notes available to summarize for today.", variant: "destructive" });
+      toast({ title: "No Data", description: "No notes available for today.", variant: "destructive" });
       return;
     }
 
@@ -131,9 +128,9 @@ export default function AdminDashboard() {
         startDate: format(new Date(), 'yyyy-MM-dd'),
       });
       setAiSummary(result);
-      toast({ title: "Summary Ready", description: "Institutional intelligence report generated via Gemini." });
+      toast({ title: "Summary Ready", description: "Executive intelligence report generated." });
     } catch (err) {
-      toast({ title: "AI Error", description: "Failed to generate AI summary.", variant: "destructive" });
+      toast({ title: "AI Error", description: "Failed to synthesize handovers.", variant: "destructive" });
     } finally {
       setSummarizing(false);
     }
@@ -145,31 +142,31 @@ export default function AdminDashboard() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <ShieldCheck className="h-4 w-4 text-primary" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Encrypted Operations Dashboard</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Institutional Operations Portal</span>
           </div>
-          <h1 className="text-3xl font-headline font-bold text-foreground">Institutional Overview</h1>
-          <p className="text-muted-foreground">{organization?.name} • Live Status Grid for {format(new Date(), 'MMMM do, yyyy')}</p>
+          <h1 className="text-3xl font-headline font-bold text-foreground">Operational Overview</h1>
+          <p className="text-muted-foreground">{organization?.name} • Live Presence Status Grid</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="outline" className="border-2 border-primary/20">
+              <Button variant="outline" className="border-2">
                 <Settings className="mr-2 h-4 w-4" />
-                Configure Geofence
+                Geofence Settings
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Institutional Geofence</DialogTitle>
                 <DialogDescription>
-                  Set the physical perimeter for your facility. Staff must be within 200m of this location to clock in.
+                  Establish the physical check-in radius for your facility.
                 </DialogDescription>
               </DialogHeader>
               <div className="py-6 space-y-4">
                 <div className="flex items-center gap-3 p-4 bg-muted rounded-xl border">
                   <MapPin className="h-6 w-6 text-primary" />
                   <div>
-                    <p className="text-sm font-bold">Current Center</p>
+                    <p className="text-sm font-bold">Current Locked Center</p>
                     <p className="text-xs text-muted-foreground">
                       {organization?.latitude ? `${organization.latitude.toFixed(4)}, ${organization.longitude?.toFixed(4)}` : "Not Established"}
                     </p>
@@ -177,20 +174,19 @@ export default function AdminDashboard() {
                 </div>
                 <Button onClick={handleSetPerimeter} disabled={settingLocation} className="w-full">
                   {settingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MapPin className="mr-2 h-4 w-4" />}
-                  Lock Perimeter to My Current Location
+                  Lock Perimeter to Current Device GPS
                 </Button>
-                <p className="text-[10px] text-center text-muted-foreground">Ensure you are physically at the facility entrance before locking.</p>
               </div>
             </DialogContent>
           </Dialog>
 
           <Link href={`/dashboard/admin/terminal`} target="_blank">
-            <Button variant="outline" className="bg-white border-2 border-primary/20 hover:bg-primary/5">
-              <Monitor className="mr-2 h-4 w-4 text-primary" />
-              Launch Scan Terminal
+            <Button variant="outline" className="border-2 hover:bg-primary/5">
+              <Monitor className="mr-2 h-4 w-4" />
+              Launch Terminal
             </Button>
           </Link>
-          <Button onClick={handleGenAIReport} disabled={summarizing || logs.length === 0} className="shadow-lg shadow-primary/20 bg-primary">
+          <Button onClick={handleGenAIReport} disabled={summarizing || logs.length === 0} className="shadow-lg shadow-primary/20">
             {summarizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BrainCircuit className="mr-2 h-4 w-4" />}
             Synthesize Handovers
           </Button>
@@ -198,42 +194,39 @@ export default function AdminDashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="border-none shadow-sm bg-primary text-primary-foreground overflow-hidden relative">
-          <div className="absolute right-0 top-0 p-4 opacity-10">
-            <Users className="h-20 w-20" strokeWidth={1} />
-          </div>
+        <Card className="border-none shadow-sm bg-primary text-primary-foreground overflow-hidden">
           <CardContent className="p-6">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-80 mb-2">Verified Personnel</p>
             <div className="flex items-baseline gap-2">
               <span className="text-4xl font-extrabold tracking-tighter">{stats.totalOnSite}</span>
-              <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full animate-pulse">LIVE NOW</span>
+              <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full">ACTIVE</span>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-sm bg-white overflow-hidden relative border-l-4 border-l-destructive">
+        <Card className="border-none shadow-sm bg-card border-l-4 border-l-destructive">
           <CardContent className="p-6">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-2">Protocol Breaches</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-2">Lateness Flagged</p>
             <div className="flex items-baseline gap-2">
               <span className="text-4xl font-extrabold text-destructive tracking-tighter">{stats.lateArrivals}</span>
-              <span className="text-[10px] font-bold text-destructive uppercase">Lateness</span>
+              <span className="text-[10px] font-bold text-destructive uppercase">Incidents</span>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-sm bg-white overflow-hidden relative border-l-4 border-l-accent">
+        <Card className="border-none shadow-sm bg-card border-l-4 border-l-amber-500">
           <CardContent className="p-6">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-2">Early Departures</p>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-extrabold text-accent tracking-tighter">{stats.earlyDepartures}</span>
-              <span className="text-[10px] font-bold text-accent uppercase">Unauthorized</span>
+              <span className="text-4xl font-extrabold text-amber-500 tracking-tighter">{stats.earlyDepartures}</span>
+              <span className="text-[10px] font-bold text-amber-500 uppercase">Alerts</span>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-sm bg-white overflow-hidden relative border-l-4 border-l-green-500">
+        <Card className="border-none shadow-sm bg-card border-l-4 border-l-green-500">
           <CardContent className="p-6">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-2">Institutional Morale</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-2">Average Morale</p>
             <div className="flex items-baseline gap-2">
               <span className="text-4xl font-extrabold text-green-600 tracking-tighter">{stats.avgMood}</span>
               <Smile className="h-5 w-5 text-green-500" />
@@ -243,25 +236,25 @@ export default function AdminDashboard() {
       </div>
 
       {aiSummary && (
-        <Card className="border-2 border-primary/20 bg-primary/[0.02] shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500">
-          <CardHeader className="bg-primary/5 border-b border-primary/10">
+        <Card className="border-2 border-primary/20 bg-primary/5 shadow-xl animate-in fade-in slide-in-from-top-4 duration-500">
+          <CardHeader className="border-b border-primary/10">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <BrainCircuit className="h-6 w-6 text-primary" />
-                <CardTitle className="text-xl font-headline">Gemini Handover Intelligence</CardTitle>
+                <CardTitle className="text-xl font-headline">Gemini Intelligence Report</CardTitle>
               </div>
-              <Badge variant="outline" className="bg-white border-primary/20 text-primary font-bold">PRODUCTION GRADE</Badge>
+              <Badge variant="outline">AI-GENERATED</Badge>
             </div>
           </CardHeader>
           <CardContent className="p-8">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
               <div className="space-y-6">
                 <div>
-                  <h4 className="text-sm font-bold uppercase tracking-widest text-primary mb-3">Executive Summary</h4>
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-primary mb-3">Executive Summary</h4>
                   <p className="text-foreground leading-relaxed text-lg">{aiSummary.summary}</p>
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold uppercase tracking-widest text-primary mb-3">Overall Sentiment</h4>
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-primary mb-3">Institutional Sentiment</h4>
                   <Badge className={cn(
                     "px-4 py-1 text-sm font-bold capitalize",
                     aiSummary.overallSentiment === 'positive' && "bg-green-500",
@@ -275,7 +268,7 @@ export default function AdminDashboard() {
               </div>
               <div className="space-y-6">
                 <div>
-                  <h4 className="text-sm font-bold uppercase tracking-widest text-destructive mb-3">Critical Issues Identified</h4>
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-destructive mb-3">Critical Alerts</h4>
                   <ul className="space-y-2">
                     {aiSummary.criticalIssues.map((issue, idx) => (
                       <li key={idx} className="flex items-start gap-2 text-sm text-foreground bg-destructive/5 p-2 rounded-lg border border-destructive/10">
@@ -286,24 +279,13 @@ export default function AdminDashboard() {
                   </ul>
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold uppercase tracking-widest text-accent mb-3">Recurring Themes</h4>
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-accent mb-3">Clinical Themes</h4>
                   <div className="flex flex-wrap gap-2">
                     {aiSummary.keyThemes.map((theme, idx) => (
-                      <Badge key={idx} variant="secondary" className="bg-accent/10 text-accent border-accent/20 px-3 py-1">{theme}</Badge>
+                      <Badge key={idx} variant="secondary" className="px-3 py-1">{theme}</Badge>
                     ))}
                   </div>
                 </div>
-              </div>
-            </div>
-            <div className="mt-8 pt-8 border-t border-primary/10">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-primary mb-3">Burnout Prevention Trends</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {aiSummary.staffWellbeingTrends.map((trend, idx) => (
-                  <div key={idx} className="flex items-center gap-3 bg-white p-3 rounded-xl border shadow-sm">
-                    <TrendingUp className="h-5 w-5 text-primary" />
-                    <span className="text-sm font-medium">{trend}</span>
-                  </div>
-                ))}
               </div>
             </div>
           </CardContent>
@@ -314,47 +296,47 @@ export default function AdminDashboard() {
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-headline font-bold flex items-center gap-2">
             <Activity className="h-5 w-5 text-primary" />
-            Live Presence Grid
+            Live Presence Feed
           </h2>
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">Auto-Synchronizing Data Stream</span>
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Auto-Updating Grid</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {loading ? (
             Array(4).fill(0).map((_, i) => (
-              <Card key={i} className="animate-pulse h-48 bg-muted border-none shadow-none" />
+              <Card key={i} className="animate-pulse h-48 bg-muted" />
             ))
           ) : logs.length === 0 ? (
-            <div className="col-span-full py-16 text-center bg-white rounded-2xl border-2 border-dashed border-primary/10">
+            <div className="col-span-full py-16 text-center bg-card rounded-2xl border-2 border-dashed">
               <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-20" />
-              <p className="text-muted-foreground font-medium">No verified presence recorded for today.</p>
+              <p className="text-muted-foreground font-medium">No verified presence for today.</p>
             </div>
           ) : (
             logs.map((log) => (
               <Card key={log.id} className={cn(
-                "shadow-sm hover:shadow-md transition-all border",
-                log.clockOutTime ? "border-muted bg-muted/5 opacity-80" : "border-primary/10 bg-white"
+                "shadow-sm transition-all border",
+                log.clockOutTime ? "opacity-60 bg-muted/50" : "bg-card border-primary/10"
               )}>
                 <CardHeader className="p-4 pb-0 flex flex-row items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold border border-primary/20 shadow-inner">
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
                       {log.userName.charAt(0)}
                     </div>
                     <div>
                       <CardTitle className="text-sm font-headline font-bold">{log.userName}</CardTitle>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-tighter font-bold">{log.userDepartment}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold">{log.userDepartment}</p>
                     </div>
                   </div>
-                  {log.status === 'late' && <Badge variant="destructive" className="text-[9px] h-4 px-1 uppercase tracking-tighter">Verified Late</Badge>}
+                  {log.status === 'late' && <Badge variant="destructive" className="text-[9px] uppercase">Late Arrival</Badge>}
                 </CardHeader>
                 <CardContent className="p-4 pt-4 space-y-4">
-                  <div className="grid grid-cols-2 gap-2 bg-muted/30 p-2 rounded-xl border">
+                  <div className="grid grid-cols-2 gap-2 bg-muted/30 p-2 rounded-lg border">
                     <div className="flex flex-col">
-                      <span className="text-[8px] font-bold text-muted-foreground uppercase">Clock-In</span>
+                      <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-tighter">In</span>
                       <span className="text-xs font-bold font-mono">{log.clockInTime?.substring(0, 5) || '--:--'}</span>
                     </div>
                     <div className="flex flex-col border-l pl-2">
-                      <span className="text-[8px] font-bold text-muted-foreground uppercase">Clock-Out</span>
+                      <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-tighter">Out</span>
                       <span className="text-xs font-bold font-mono">{log.clockOutTime?.substring(0, 5) || '--:--'}</span>
                     </div>
                   </div>
@@ -362,20 +344,16 @@ export default function AdminDashboard() {
                   {log.clockOutTime ? (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1">
-                        <span className="text-[9px] font-bold uppercase text-muted-foreground">Mood:</span>
                         {log.moodRating === 3 && <Smile className="h-4 w-4 text-green-500" />}
                         {log.moodRating === 2 && <Meh className="h-4 w-4 text-amber-500" />}
                         {log.moodRating === 1 && <Frown className="h-4 w-4 text-red-500" />}
                       </div>
-                      <Badge variant="outline" className="text-[9px] bg-green-50 border-green-200 text-green-700 uppercase font-bold tracking-widest">Handover Secure</Badge>
+                      <Badge variant="outline" className="text-[9px] uppercase tracking-widest">Handover Finalized</Badge>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                        <span className="text-[9px] font-bold text-green-600 uppercase tracking-widest">Active On-Site</span>
-                      </div>
-                      <Clock className="h-4 w-4 text-muted-foreground animate-spin [animation-duration:10s]" />
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                      <span className="text-[9px] font-bold text-green-600 uppercase tracking-widest">Active On-Site</span>
                     </div>
                   )}
                 </CardContent>
