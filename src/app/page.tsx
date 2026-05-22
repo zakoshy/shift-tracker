@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -16,6 +15,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 import Link from "next/link";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Home() {
   const { user, profile, loading } = usePulseLogAuth();
@@ -48,7 +48,8 @@ export default function Home() {
           <Activity className="h-8 w-8 text-primary" strokeWidth={2.5} />
           <span className="text-xl md:text-2xl font-headline font-bold text-primary tracking-tight">PulseLog</span>
         </div>
-        <div className="flex gap-2 md:gap-4 w-full sm:w-auto">
+        <div className="flex items-center gap-2 md:gap-4 w-full sm:w-auto">
+          <ThemeToggle />
           <Link href="/login" className="flex-1 sm:flex-none">
             <Button variant="ghost" className="w-full font-bold text-xs md:text-sm">Staff Login</Button>
           </Link>
@@ -76,11 +77,6 @@ export default function Home() {
               <Button size="lg" className="w-full h-14 md:h-16 px-6 md:px-10 text-lg md:text-xl font-bold shadow-2xl shadow-primary/30">
                 Deploy for Your Facility
                 <ArrowRight className="ml-2 h-5 w-5 md:h-6 md:w-6" />
-              </Button>
-            </Link>
-            <Link href="/login" className="w-full sm:w-auto">
-              <Button size="lg" variant="outline" className="w-full h-14 md:h-16 px-6 md:px-10 text-lg md:text-xl font-bold bg-white border-2">
-                Staff Demo
               </Button>
             </Link>
           </div>
