@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -61,6 +62,7 @@ export default function AdminDashboard() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AttendanceLog[];
+      // Client-side sort to avoid complex index requirements initially
       const sortedData = [...data].sort((a, b) => {
         const timeA = a.clockInTime || '';
         const timeB = b.clockInTime || '';

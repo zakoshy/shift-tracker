@@ -1,3 +1,4 @@
+
 "use client";
 
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
@@ -23,7 +24,7 @@ export default function TerminalPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-screen bg-[#0A0A0B] flex items-center justify-center">
         <Loader2 className="h-12 w-12 text-primary animate-spin" />
       </div>
     );
@@ -64,7 +65,7 @@ export default function TerminalPage() {
             <ShieldCheck className="h-8 w-8 text-primary shrink-0" />
             <div>
               <h4 className="font-bold text-lg">Anti-Fraud Protocol Active</h4>
-              <p className="text-white/60 text-sm">Clock-in requires active on-site GPS verification. Remote check-ins are automatically flagged and rejected.</p>
+              <p className="text-white/60 text-sm">Clock-in requires active on-site GPS verification. Remote check-ins are automatically flagged and rejected by the institutional geofence.</p>
             </div>
           </div>
         </div>
@@ -84,7 +85,7 @@ export default function TerminalPage() {
               <p className="mt-8 text-black font-bold text-xl uppercase tracking-widest text-center">
                 Scan to Verify Presence
               </p>
-              <p className="text-black/40 text-sm font-medium mt-2">Personal Device Required</p>
+              <p className="text-black/40 text-sm font-medium mt-2">Personal Session Required</p>
             </CardContent>
           </Card>
         </div>
@@ -99,7 +100,7 @@ export default function TerminalPage() {
   );
 }
 
-function Badge({ className, variant, children }: any) {
+function Badge({ className, children }: { className?: string; variant?: string; children: React.ReactNode }) {
   return (
     <div className={cn("inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2", className)}>
       {children}
