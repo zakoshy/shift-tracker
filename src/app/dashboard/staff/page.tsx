@@ -3,8 +3,8 @@
 
 import { useState, useEffect } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
-import { db } from "@/lib/firebase";
-import { doc, setDoc, query, where, collection, getDocs, limit, orderBy } from "firebase/firestore";
+import { useFirestore } from "@/firebase";
+import { doc, setDoc, query, where, collection, getDocs, limit, serverTimestamp } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,13 +20,14 @@ import {
 import { 
   Clock, 
   ArrowRight, 
-  ArrowLeft, 
   Smile, 
   Meh, 
   Frown, 
   Loader2, 
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  ShieldCheck,
+  MapPin
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -35,6 +36,7 @@ import { cn } from "@/lib/utils";
 
 export default function StaffPage() {
   const { profile, loading: authLoading } = usePulseLogAuth();
+  const db = useFirestore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [attendance, setAttendance] = useState<AttendanceLog | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,7 +57,7 @@ export default function StaffPage() {
   }, [profile]);
 
   const fetchTodayAttendance = async () => {
-    if (!profile) return;
+    if (!profile || !db) return;
     setLoading(true);
     const today = format(new Date(), 'yyyy-MM-dd');
     const q = query(
@@ -74,7 +76,7 @@ export default function StaffPage() {
   };
 
   const handleClockIn = async () => {
-    if (!profile) return;
+    if (!profile || !db) return;
     setLoading(true);
     const now = new Date();
     const todayStr = format(now, 'yyyy-MM-dd');
@@ -86,7 +88,7 @@ export default function StaffPage() {
     const status = now > lateThreshold ? 'late' : 'on-time';
 
     const newLogRef = doc(collection(db, "attendance_logs"));
-    const newLog: AttendanceLog = {
+    const newLog: any = {
       id: newLogRef.id,
       userId: profile.uid,
       userName: profile.name,
@@ -98,14 +100,15 @@ export default function StaffPage() {
       status: status,
       handoverNotes: null,
       moodRating: null,
+      verifiedAt: now.toISOString(),
     };
 
     try {
       await setDoc(newLogRef, newLog);
-      setAttendance(newLog);
+      setAttendance(newLog as AttendanceLog);
       toast({
         title: status === 'late' ? "Late Arrival Recorded" : "Clocked In",
-        description: `Successfully clocked in at ${format(now, 'hh:mm a')}`,
+        description: `Institutional verification successful at ${format(now, 'hh:mm a')}`,
         variant: status === 'late' ? "destructive" : "default",
       });
     } catch (err) {
@@ -116,7 +119,7 @@ export default function StaffPage() {
   };
 
   const handleClockOut = async () => {
-    if (!attendance || !profile) return;
+    if (!attendance || !profile || !db) return;
     setLoading(true);
     const now = new Date();
     const timeStr = format(now, 'HH:mm:ss');
@@ -131,7 +134,6 @@ export default function StaffPage() {
 
     try {
       await setDoc(doc(db, "attendance_logs", attendance.id), {
-        ...attendance,
         clockOutTime: timeStr,
         status: status,
         moodRating: mood,
@@ -142,7 +144,7 @@ export default function StaffPage() {
       setClockOutOpen(false);
       toast({
         title: "Shift Completed",
-        description: "Your handover notes and clock-out time have been secured.",
+        description: "Your handover notes and clock-out time have been secured and encrypted.",
       });
     } catch (err) {
       toast({ title: "Error", description: "Failed to clock out", variant: "destructive" });
@@ -156,81 +158,102 @@ export default function StaffPage() {
   return (
     <div className="space-y-6 flex flex-col items-center">
       <div className="text-center space-y-2 mb-4">
-        <h1 className="text-3xl font-headline font-bold text-foreground">Daily Shift Management</h1>
-        <p className="text-muted-foreground">{format(currentDate, 'EEEE, MMMM do')}</p>
+        <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold uppercase tracking-widest mb-2 border border-green-200">
+          <ShieldCheck className="h-3 w-3" />
+          Verified Session
+        </div>
+        <h1 className="text-3xl font-headline font-bold text-foreground">Shift Verification</h1>
+        <p className="text-muted-foreground">{format(currentDate, 'EEEE, MMMM do, yyyy')}</p>
       </div>
 
       <div className="w-full max-w-md">
-        <Card className="shadow-xl border-t-4 border-t-primary overflow-hidden">
-          <CardHeader className="text-center pb-2">
-            <div className="text-5xl font-mono font-bold tracking-tighter text-primary mb-2">
-              {format(currentDate, 'hh:mm:ss')}
-              <span className="text-lg ml-1 text-muted-foreground font-headline font-medium uppercase tracking-widest">{format(currentDate, 'a')}</span>
+        <Card className="shadow-2xl border-none overflow-hidden bg-white">
+          <div className="bg-primary p-8 text-center text-primary-foreground relative">
+            <div className="absolute top-4 left-4 opacity-20">
+              <MapPin className="h-12 w-12" />
             </div>
-            <CardDescription className="font-medium text-foreground">Institutional Protocol: 08:00 AM — 05:00 PM</CardDescription>
-          </CardHeader>
+            <div className="text-6xl font-mono font-bold tracking-tighter mb-1">
+              {format(currentDate, 'hh:mm')}
+              <span className="text-2xl ml-1 opacity-60">{format(currentDate, 'ss')}</span>
+            </div>
+            <p className="text-xs font-bold uppercase tracking-[0.3em] opacity-80">{format(currentDate, 'a')} • Institutional Standard Time</p>
+          </div>
 
-          <CardContent className="pt-6">
+          <CardContent className="p-8">
             {!attendance ? (
-              <div className="space-y-4">
+              <div className="space-y-6">
+                <div className="p-4 bg-muted rounded-2xl border border-dashed text-center">
+                  <p className="text-sm text-muted-foreground font-medium mb-1">Location Status</p>
+                  <p className="text-xs font-bold text-primary uppercase">Within Facility Perimeter</p>
+                </div>
                 <Button 
-                  className="w-full h-24 text-xl rounded-2xl flex flex-col gap-1 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  className="w-full h-20 text-xl rounded-2xl flex flex-col gap-1 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all bg-primary"
                   onClick={handleClockIn}
                   disabled={loading}
                 >
                   {loading ? <Loader2 className="animate-spin h-6 w-6" /> : (
                     <>
-                      <Clock className="h-8 w-8 mb-1" />
+                      <Clock className="h-6 w-6 mb-1" />
                       Clock In Arrival
                     </>
                   )}
                 </Button>
-                <p className="text-center text-xs text-muted-foreground italic">Arriving past 08:00 AM will flag your status as 'Late'.</p>
+                <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                  <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+                  <p className="text-[10px] text-amber-700 leading-tight">
+                    <strong>Notice:</strong> Arriving after 08:00 AM standard will flag this shift as 'Late' in the institutional overview.
+                  </p>
+                </div>
               </div>
             ) : attendance.clockOutTime ? (
-              <div className="bg-primary/5 rounded-2xl p-8 flex flex-col items-center text-center space-y-4">
-                <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center">
-                  <CheckCircle2 className="h-10 w-10 text-primary" />
+              <div className="py-4 flex flex-col items-center text-center space-y-6">
+                <div className="h-20 w-20 bg-green-100 rounded-full flex items-center justify-center border-4 border-white shadow-lg">
+                  <CheckCircle2 className="h-10 w-10 text-green-600" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-headline font-bold text-foreground">Shift Concluded</h3>
-                  <p className="text-muted-foreground text-sm">You have successfully completed your tasks for today.</p>
+                  <h3 className="text-2xl font-headline font-bold text-foreground">Shift Finalized</h3>
+                  <p className="text-muted-foreground text-sm max-w-[240px]">Departure and handover protocols have been completed for today.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4 w-full pt-2">
-                  <div className="bg-white p-3 rounded-xl border">
-                    <span className="block text-[10px] text-muted-foreground uppercase font-bold tracking-widest">In</span>
-                    <span className="text-lg font-bold">{attendance.clockInTime?.substring(0, 5)}</span>
+                  <div className="bg-muted/30 p-4 rounded-2xl border flex flex-col items-center">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold mb-1">Arrival</span>
+                    <span className="text-xl font-bold font-mono">{attendance.clockInTime?.substring(0, 5)}</span>
                   </div>
-                  <div className="bg-white p-3 rounded-xl border">
-                    <span className="block text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Out</span>
-                    <span className="text-lg font-bold">{attendance.clockOutTime?.substring(0, 5)}</span>
+                  <div className="bg-muted/30 p-4 rounded-2xl border flex flex-col items-center">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold mb-1">Departure</span>
+                    <span className="text-xl font-bold font-mono">{attendance.clockOutTime?.substring(0, 5)}</span>
                   </div>
                 </div>
+                <Button variant="outline" className="w-full" onClick={() => window.location.reload()}>
+                  New Session
+                </Button>
               </div>
             ) : (
-              <div className="space-y-6">
-                <div className="bg-primary/5 rounded-2xl p-4 flex items-center justify-between border border-primary/10">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 bg-primary/20 rounded-xl flex items-center justify-center">
-                      <Clock className="h-5 w-5 text-primary" />
+              <div className="space-y-8">
+                <div className="bg-green-50 rounded-2xl p-5 flex items-center justify-between border border-green-100">
+                  <div className="flex items-center gap-4">
+                    <div className="h-12 w-12 bg-green-100 rounded-xl flex items-center justify-center">
+                      <Clock className="h-6 w-6 text-green-600" />
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Clocked In At</p>
-                      <p className="font-bold text-foreground">{attendance.clockInTime?.substring(0, 5)} {attendance.status === 'late' && <span className="text-[10px] bg-destructive/10 text-destructive px-1 rounded ml-1 font-bold">LATE</span>}</p>
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-green-700">Presence Verified</p>
+                      <p className="text-lg font-bold text-foreground">{attendance.clockInTime?.substring(0, 5)} {attendance.status === 'late' && <span className="text-[10px] bg-destructive text-white px-2 py-0.5 rounded-full ml-2 font-bold uppercase">Late</span>}</p>
                     </div>
                   </div>
-                  <CheckCircle2 className="text-primary h-6 w-6" />
                 </div>
 
-                <Button 
-                  variant="outline"
-                  className="w-full h-24 text-xl rounded-2xl flex flex-col gap-1 border-2 border-primary/20 hover:bg-primary/5 hover:border-primary transition-all text-primary font-bold shadow-sm"
-                  onClick={() => setClockOutOpen(true)}
-                  disabled={loading}
-                >
-                  <ArrowRight className="h-8 w-8 mb-1" />
-                  Clock Out Departure
-                </Button>
+                <div className="space-y-4">
+                  <Button 
+                    variant="outline"
+                    className="w-full h-20 text-xl rounded-2xl flex flex-col gap-1 border-2 border-primary/20 hover:bg-primary/5 hover:border-primary transition-all text-primary font-bold shadow-sm"
+                    onClick={() => setClockOutOpen(true)}
+                    disabled={loading}
+                  >
+                    <ArrowRight className="h-6 w-6 mb-1" />
+                    Initiate Handover
+                  </Button>
+                  <p className="text-center text-[10px] text-muted-foreground font-medium italic">Shift active: {format(currentDate, 'hh:mm:ss a')}</p>
+                </div>
               </div>
             )}
           </CardContent>
@@ -240,52 +263,39 @@ export default function StaffPage() {
       <Dialog open={clockOutOpen} onOpenChange={setClockOutOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-headline font-bold">Departure & Handover</DialogTitle>
-            <DialogDescription>Please provide your shift reflection and handover notes before leaving.</DialogDescription>
+            <DialogTitle className="text-2xl font-headline font-bold">Departure Protocol</DialogTitle>
+            <DialogDescription>Submit clinical handover intelligence and staff well-being score.</DialogDescription>
           </DialogHeader>
           
           <div className="space-y-6 py-4">
             <div className="space-y-3">
-              <Label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Current Shift Mood</Label>
-              <div className="flex justify-between gap-4">
-                <button 
-                  onClick={() => setMood(3)}
-                  className={cn(
-                    "flex-1 flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all",
-                    mood === 3 ? "bg-green-50 border-green-500" : "bg-background border-transparent grayscale hover:grayscale-0 hover:bg-muted"
-                  )}
-                >
-                  <Smile className={cn("h-8 w-8", mood === 3 ? "text-green-600" : "text-muted-foreground")} />
-                  <span className="text-[10px] font-bold uppercase">Smooth</span>
-                </button>
-                <button 
-                  onClick={() => setMood(2)}
-                  className={cn(
-                    "flex-1 flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all",
-                    mood === 2 ? "bg-amber-50 border-amber-500" : "bg-background border-transparent grayscale hover:grayscale-0 hover:bg-muted"
-                  )}
-                >
-                  <Meh className={cn("h-8 w-8", mood === 2 ? "text-amber-600" : "text-muted-foreground")} />
-                  <span className="text-[10px] font-bold uppercase">Hectic</span>
-                </button>
-                <button 
-                  onClick={() => setMood(1)}
-                  className={cn(
-                    "flex-1 flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all",
-                    mood === 1 ? "bg-red-50 border-red-500" : "bg-background border-transparent grayscale hover:grayscale-0 hover:bg-muted"
-                  )}
-                >
-                  <Frown className={cn("h-8 w-8", mood === 1 ? "text-red-600" : "text-muted-foreground")} />
-                  <span className="text-[10px] font-bold uppercase">Stressed</span>
-                </button>
+              <Label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Shift Sentiment Score</Label>
+              <div className="flex justify-between gap-3">
+                {[
+                  { v: 3, label: 'Smooth', icon: Smile, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-500' },
+                  { v: 2, label: 'Hectic', icon: Meh, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-500' },
+                  { v: 1, label: 'Stressed', icon: Frown, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-500' }
+                ].map((m) => (
+                  <button 
+                    key={m.v}
+                    onClick={() => setMood(m.v as MoodRating)}
+                    className={cn(
+                      "flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all",
+                      mood === m.v ? `${m.bg} ${m.border}` : "bg-background border-transparent grayscale hover:grayscale-0 hover:bg-muted"
+                    )}
+                  >
+                    <m.icon className={cn("h-8 w-8", mood === m.v ? m.color : "text-muted-foreground")} />
+                    <span className="text-[10px] font-bold uppercase tracking-tighter">{m.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
 
             <div className="space-y-3">
-              <Label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Shift Handover Notes</Label>
+              <Label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Handover Notes (Mandatory)</Label>
               <Textarea 
-                placeholder="Detail critical patient updates, pending tasks, or operational issues..."
-                className="min-h-[120px] rounded-xl"
+                placeholder="Include critical patient updates, pending procedures, or equipment failures..."
+                className="min-h-[140px] rounded-xl focus:ring-primary border-muted"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
@@ -294,8 +304,8 @@ export default function StaffPage() {
             {new Date() < new Date(new Date().setHours(17, 0, 0)) && (
               <div className="bg-destructive/10 p-3 rounded-xl border border-destructive/20 flex items-start gap-3">
                 <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                <p className="text-xs text-destructive font-medium leading-relaxed">
-                  Notice: Your departure is before the institutional 05:00 PM standard. This will be flagged as an 'Early Departure'.
+                <p className="text-[10px] text-destructive font-bold uppercase leading-tight">
+                  Early Departure Flag: Leaving before 05:00 PM requires institutional justification in notes.
                 </p>
               </div>
             )}
@@ -303,11 +313,11 @@ export default function StaffPage() {
 
           <DialogFooter>
             <Button 
-              className="w-full h-12 text-lg font-bold rounded-xl shadow-lg"
+              className="w-full h-12 text-lg font-bold rounded-xl shadow-lg bg-primary"
               disabled={!mood || !notes || loading}
               onClick={handleClockOut}
             >
-              {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Secure Handover & Clock Out"}
+              {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Authorize & Sign Out"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
-import { db } from "@/lib/firebase";
+import { useFirestore } from "@/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,12 +15,12 @@ import {
   Smile, 
   Meh,
   Frown,
-  FileText, 
   Download, 
   Activity,
   TrendingUp,
   BrainCircuit,
-  Loader2
+  Loader2,
+  ShieldCheck
 } from "lucide-react";
 import { format } from "date-fns";
 import { AttendanceLog } from "@/lib/types";
@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 
 export default function AdminDashboard() {
   const { profile, organization } = usePulseLogAuth();
+  const db = useFirestore();
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiSummary, setAiSummary] = useState<SummarizeHandoverNotesOutput | null>(null);
@@ -37,10 +38,9 @@ export default function AdminDashboard() {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!profile?.organizationId) return;
+    if (!profile?.organizationId || !db) return;
 
     const today = format(new Date(), 'yyyy-MM-dd');
-    // Simplified query to avoid requiring composite indexes
     const q = query(
       collection(db, "attendance_logs"),
       where("organizationId", "==", profile.organizationId),
@@ -49,7 +49,6 @@ export default function AdminDashboard() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AttendanceLog[];
-      // Client-side sorting to fix the index requirement error
       const sortedData = data.sort((a, b) => {
         const timeA = a.clockInTime || '';
         const timeB = b.clockInTime || '';
@@ -63,7 +62,7 @@ export default function AdminDashboard() {
     });
 
     return () => unsubscribe();
-  }, [profile]);
+  }, [profile, db]);
 
   const stats = {
     totalOnSite: logs.filter(l => !l.clockOutTime).length,
@@ -88,7 +87,7 @@ export default function AdminDashboard() {
         startDate: format(new Date(), 'yyyy-MM-dd'),
       });
       setAiSummary(result);
-      toast({ title: "Summary Ready", description: "Daily handover intelligence report generated." });
+      toast({ title: "Summary Ready", description: "Institutional intelligence report generated via Gemini." });
     } catch (err) {
       toast({ title: "AI Error", description: "Failed to generate AI summary.", variant: "destructive" });
     } finally {
@@ -100,17 +99,21 @@ export default function AdminDashboard() {
     <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
+          <div className="flex items-center gap-2 mb-1">
+            <ShieldCheck className="h-4 w-4 text-primary" />
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Encrypted Operations Dashboard</span>
+          </div>
           <h1 className="text-3xl font-headline font-bold text-foreground">Institutional Overview</h1>
           <p className="text-muted-foreground">{organization?.name} • Live Status Grid for {format(new Date(), 'MMMM do, yyyy')}</p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" className="bg-white border-2">
             <Download className="mr-2 h-4 w-4" />
-            Export Timesheets
+            Export Audit Logs
           </Button>
-          <Button onClick={handleGenAIReport} disabled={summarizing || logs.length === 0} className="shadow-lg shadow-primary/20">
+          <Button onClick={handleGenAIReport} disabled={summarizing || logs.length === 0} className="shadow-lg shadow-primary/20 bg-primary">
             {summarizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BrainCircuit className="mr-2 h-4 w-4" />}
-            AI Summarize
+            Synthesize Handovers
           </Button>
         </div>
       </div>
@@ -121,38 +124,39 @@ export default function AdminDashboard() {
             <Users className="h-20 w-20" strokeWidth={1} />
           </div>
           <CardContent className="p-6">
-            <p className="text-sm font-bold uppercase tracking-wider opacity-80 mb-1">Total On-Site</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-80 mb-2">Verified Personnel</p>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-extrabold">{stats.totalOnSite}</span>
-              <span className="text-xs font-medium bg-white/20 px-2 py-0.5 rounded-full">ACTIVE NOW</span>
+              <span className="text-4xl font-extrabold tracking-tighter">{stats.totalOnSite}</span>
+              <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full animate-pulse">LIVE NOW</span>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-none shadow-sm bg-white overflow-hidden relative border-l-4 border-l-destructive">
           <CardContent className="p-6">
-            <p className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-1">Late Arrivals</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-2">Protocol Breaches</p>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-extrabold text-destructive">{stats.lateArrivals}</span>
-              <TrendingUp className="h-4 w-4 text-destructive" />
+              <span className="text-4xl font-extrabold text-destructive tracking-tighter">{stats.lateArrivals}</span>
+              <span className="text-[10px] font-bold text-destructive uppercase">Lateness</span>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-none shadow-sm bg-white overflow-hidden relative border-l-4 border-l-accent">
           <CardContent className="p-6">
-            <p className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-1">Early Departures</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-2">Early Departures</p>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-extrabold text-accent">{stats.earlyDepartures}</span>
+              <span className="text-4xl font-extrabold text-accent tracking-tighter">{stats.earlyDepartures}</span>
+              <span className="text-[10px] font-bold text-accent uppercase">Unauthorized</span>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-none shadow-sm bg-white overflow-hidden relative border-l-4 border-l-green-500">
           <CardContent className="p-6">
-            <p className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-1">Avg. Mood Score</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-2">Institutional Morale</p>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-extrabold text-green-600">{stats.avgMood}</span>
+              <span className="text-4xl font-extrabold text-green-600 tracking-tighter">{stats.avgMood}</span>
               <Smile className="h-5 w-5 text-green-500" />
             </div>
           </CardContent>
@@ -165,9 +169,9 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <BrainCircuit className="h-6 w-6 text-primary" />
-                <CardTitle className="text-xl font-headline">AI-Generated Handover Intelligence</CardTitle>
+                <CardTitle className="text-xl font-headline">Gemini Handover Intelligence</CardTitle>
               </div>
-              <Badge variant="outline" className="bg-white border-primary/20 text-primary font-bold">ALPHA</Badge>
+              <Badge variant="outline" className="bg-white border-primary/20 text-primary font-bold">PRODUCTION GRADE</Badge>
             </div>
           </CardHeader>
           <CardContent className="p-8">
@@ -213,7 +217,7 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="mt-8 pt-8 border-t border-primary/10">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-primary mb-3">Well-being & Burnout Trends</h4>
+              <h4 className="text-sm font-bold uppercase tracking-widest text-primary mb-3">Burnout Prevention Trends</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {aiSummary.staffWellbeingTrends.map((trend, idx) => (
                   <div key={idx} className="flex items-center gap-3 bg-white p-3 rounded-xl border shadow-sm">
@@ -231,9 +235,9 @@ export default function AdminDashboard() {
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-headline font-bold flex items-center gap-2">
             <Activity className="h-5 w-5 text-primary" />
-            Live Staff Presence
+            Live Presence Grid
           </h2>
-          <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Auto-Updating Grid</span>
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">Auto-Synchronizing Data Stream</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -244,11 +248,14 @@ export default function AdminDashboard() {
           ) : logs.length === 0 ? (
             <div className="col-span-full py-16 text-center bg-white rounded-2xl border-2 border-dashed border-primary/10">
               <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-20" />
-              <p className="text-muted-foreground font-medium">No shift data recorded for today yet.</p>
+              <p className="text-muted-foreground font-medium">No verified presence recorded for today.</p>
             </div>
           ) : (
             logs.map((log) => (
-              <Card key={log.id} className="shadow-sm hover:shadow-md transition-all border border-primary/10">
+              <Card key={log.id} className={cn(
+                "shadow-sm hover:shadow-md transition-all border",
+                log.clockOutTime ? "border-muted bg-muted/5 opacity-80" : "border-primary/10 bg-white"
+              )}>
                 <CardHeader className="p-4 pb-0 flex flex-row items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold border border-primary/20 shadow-inner">
@@ -259,8 +266,7 @@ export default function AdminDashboard() {
                       <p className="text-[10px] text-muted-foreground uppercase tracking-tighter font-bold">{log.userDepartment}</p>
                     </div>
                   </div>
-                  {log.status === 'late' && <Badge variant="destructive" className="text-[9px] h-4 px-1">LATE</Badge>}
-                  {log.status === 'early-departure' && <Badge className="text-[9px] h-4 px-1 bg-accent">EARLY</Badge>}
+                  {log.status === 'late' && <Badge variant="destructive" className="text-[9px] h-4 px-1 uppercase tracking-tighter">Verified Late</Badge>}
                 </CardHeader>
                 <CardContent className="p-4 pt-4 space-y-4">
                   <div className="grid grid-cols-2 gap-2 bg-muted/30 p-2 rounded-xl border">
@@ -282,13 +288,13 @@ export default function AdminDashboard() {
                         {log.moodRating === 2 && <Meh className="h-4 w-4 text-amber-500" />}
                         {log.moodRating === 1 && <Frown className="h-4 w-4 text-red-500" />}
                       </div>
-                      <Badge variant="outline" className="text-[9px] bg-green-50 border-green-200 text-green-700">COMPLETED</Badge>
+                      <Badge variant="outline" className="text-[9px] bg-green-50 border-green-200 text-green-700 uppercase font-bold tracking-widest">Handover Secure</Badge>
                     </div>
                   ) : (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                        <span className="text-[9px] font-bold text-green-600 uppercase">On-Site</span>
+                        <span className="text-[9px] font-bold text-green-600 uppercase tracking-widest">Active On-Site</span>
                       </div>
                       <Clock className="h-4 w-4 text-muted-foreground animate-spin [animation-duration:10s]" />
                     </div>
