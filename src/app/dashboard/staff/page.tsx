@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -34,7 +33,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { AttendanceLog, MoodRating } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, calculateDistance } from "@/lib/utils";
 
 export default function StaffPage() {
   const { profile, organization, loading: authLoading } = usePulseLogAuth();
@@ -45,7 +44,7 @@ export default function StaffPage() {
   const [clockOutOpen, setClockOutOpen] = useState(false);
   const [mood, setMood] = useState<MoodRating | null>(null);
   const [notes, setNotes] = useState("");
-  const [locationStatus, setLocationStatus] = useState<'checking' | 'verified' | 'failed' | 'denied'>('checking');
+  const [locationStatus, setLocationStatus] = useState<'checking' | 'verified' | 'failed' | 'denied' | 'outside'>('checking');
   const [coords, setCoords] = useState<{ lat: number, lng: number } | null>(null);
   const { toast } = useToast();
 
@@ -55,11 +54,11 @@ export default function StaffPage() {
   }, []);
 
   useEffect(() => {
-    if (profile) {
+    if (profile && organization) {
       fetchTodayAttendance();
       verifyLocation();
     }
-  }, [profile]);
+  }, [profile, organization]);
 
   const verifyLocation = () => {
     if (!navigator.geolocation) {
@@ -67,20 +66,43 @@ export default function StaffPage() {
       return;
     }
 
+    setLocationStatus('checking');
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setCoords({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
-        // In a real app, you would compare position.coords with organization.latitude/longitude
-        // For the demo, we simulate verification success
-        setLocationStatus('verified');
+        const userLat = position.coords.latitude;
+        const userLng = position.coords.longitude;
+        setCoords({ lat: userLat, lng: userLng });
+
+        // If organization has no location set, we cannot verify (assume verified for testing until admin sets it)
+        if (!organization?.latitude || !organization?.longitude) {
+          setLocationStatus('verified');
+          return;
+        }
+
+        const distance = calculateDistance(
+          userLat, 
+          userLng, 
+          organization.latitude, 
+          organization.longitude
+        );
+
+        // Required proximity: 200 meters
+        if (distance <= (organization.radiusInMeters || 200)) {
+          setLocationStatus('verified');
+        } else {
+          setLocationStatus('outside');
+          toast({ 
+            title: "Outside Perimeter", 
+            description: `You are currently ${(distance / 1000).toFixed(2)}km away from the facility.`, 
+            variant: "destructive" 
+          });
+        }
       },
       (error) => {
         setLocationStatus('denied');
         console.error("Location error:", error);
-      }
+      },
+      { enableHighAccuracy: true }
     );
   };
 
@@ -105,7 +127,7 @@ export default function StaffPage() {
 
   const handleClockIn = async () => {
     if (!profile || !db || locationStatus !== 'verified') {
-      toast({ title: "Security Failure", description: "GPS verification required for clock-in.", variant: "destructive" });
+      toast({ title: "Security Failure", description: "Active GPS verification at the facility entrance is required.", variant: "destructive" });
       return;
     }
 
@@ -157,7 +179,6 @@ export default function StaffPage() {
     const now = new Date();
     const timeStr = format(now, 'HH:mm:ss');
     
-    // Check if early (Before 05:00 PM)
     const earlyThreshold = new Date();
     earlyThreshold.setHours(17, 0, 0);
     let status = attendance.status;
@@ -213,7 +234,6 @@ export default function StaffPage() {
           </div>
 
           <CardContent className="p-8 space-y-6">
-            {/* Security Status Bar */}
             <div className={cn(
               "flex items-center justify-between p-3 rounded-xl border-2 transition-all",
               locationStatus === 'verified' ? "bg-green-50 border-green-200 text-green-700" :
@@ -227,14 +247,13 @@ export default function StaffPage() {
                 <span className="text-[10px] font-bold uppercase tracking-widest">
                   {locationStatus === 'verified' ? "In Perimeter" :
                    locationStatus === 'checking' ? "Verifying GPS..." :
-                   locationStatus === 'denied' ? "GPS Access Denied" : "Outside Perimeter"}
+                   locationStatus === 'denied' ? "GPS Access Denied" : 
+                   locationStatus === 'outside' ? "Outside Perimeter" : "GPS Error"}
                 </span>
               </div>
-              {locationStatus !== 'verified' && (
-                <Button variant="ghost" size="sm" className="h-6 text-[9px] font-bold uppercase" onClick={verifyLocation}>
-                  Retry
-                </Button>
-              )}
+              <Button variant="ghost" size="sm" className="h-6 text-[9px] font-bold uppercase" onClick={verifyLocation}>
+                Refresh GPS
+              </Button>
             </div>
 
             {!attendance ? (
@@ -259,7 +278,7 @@ export default function StaffPage() {
                 <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
                   <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
                   <p className="text-[10px] text-amber-700 leading-tight">
-                    <strong>Note:</strong> Institutional protocol requires active GPS location to prevent remote clock-in attempts.
+                    <strong>Institutional Protocol:</strong> You must be physically present on-site to clock in. Geofencing is active.
                   </p>
                 </div>
               </div>
@@ -358,15 +377,6 @@ export default function StaffPage() {
                 onChange={(e) => setNotes(e.target.value)}
               />
             </div>
-
-            {new Date() < new Date(new Date().setHours(17, 0, 0)) && (
-              <div className="bg-destructive/10 p-3 rounded-xl border border-destructive/20 flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                <p className="text-[10px] text-destructive font-bold uppercase leading-tight">
-                  Early Departure Flag: Leaving before 05:00 PM requires institutional justification in notes.
-                </p>
-              </div>
-            )}
           </div>
 
           <DialogFooter>

@@ -1,10 +1,9 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { useFirestore } from "@/firebase";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,14 +14,14 @@ import {
   Smile, 
   Meh,
   Frown,
-  Download, 
   Activity,
   TrendingUp,
   BrainCircuit,
   Loader2,
   ShieldCheck,
   Monitor,
-  Maximize
+  MapPin,
+  Settings
 } from "lucide-react";
 import { format } from "date-fns";
 import { AttendanceLog } from "@/lib/types";
@@ -30,6 +29,15 @@ import { summarizeHandoverNotes, SummarizeHandoverNotesOutput } from "@/ai/flows
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription,
+  DialogTrigger,
+  DialogFooter
+} from "@/components/ui/dialog";
 
 export default function AdminDashboard() {
   const { profile, organization } = usePulseLogAuth();
@@ -38,6 +46,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [aiSummary, setAiSummary] = useState<SummarizeHandoverNotesOutput | null>(null);
   const [summarizing, setSummarizing] = useState(false);
+  const [settingLocation, setSettingLocation] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -52,7 +61,6 @@ export default function AdminDashboard() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AttendanceLog[];
-      // Client-side sort to avoid index requirements for now
       const sortedData = [...data].sort((a, b) => {
         const timeA = a.clockInTime || '';
         const timeB = b.clockInTime || '';
@@ -75,6 +83,36 @@ export default function AdminDashboard() {
     avgMood: logs.filter(l => l.moodRating).length > 0 
       ? (logs.reduce((acc, curr) => acc + (curr.moodRating || 0), 0) / logs.filter(l => l.moodRating).length).toFixed(1)
       : "N/A"
+  };
+
+  const handleSetPerimeter = () => {
+    if (!navigator.geolocation) {
+      toast({ title: "Unsupported", description: "Browser geolocation not available.", variant: "destructive" });
+      return;
+    }
+
+    setSettingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        if (!organization?.id || !db) return;
+        try {
+          await updateDoc(doc(db, "organizations", organization.id), {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            radiusInMeters: 200, // Default 200m
+          });
+          toast({ title: "Perimeter Locked", description: "This location is now the institutional clock-in center." });
+        } catch (err) {
+          toast({ title: "Error", description: "Failed to update organization location.", variant: "destructive" });
+        } finally {
+          setSettingLocation(false);
+        }
+      },
+      (error) => {
+        toast({ title: "GPS Error", description: "Could not retrieve your current location.", variant: "destructive" });
+        setSettingLocation(false);
+      }
+    );
   };
 
   const handleGenAIReport = async () => {
@@ -111,6 +149,39 @@ export default function AdminDashboard() {
           <p className="text-muted-foreground">{organization?.name} • Live Status Grid for {format(new Date(), 'MMMM do, yyyy')}</p>
         </div>
         <div className="flex flex-wrap gap-3">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="border-2 border-primary/20">
+                <Settings className="mr-2 h-4 w-4" />
+                Configure Geofence
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Institutional Geofence</DialogTitle>
+                <DialogDescription>
+                  Set the physical perimeter for your facility. Staff must be within 200m of this location to clock in.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-6 space-y-4">
+                <div className="flex items-center gap-3 p-4 bg-muted rounded-xl border">
+                  <MapPin className="h-6 w-6 text-primary" />
+                  <div>
+                    <p className="text-sm font-bold">Current Center</p>
+                    <p className="text-xs text-muted-foreground">
+                      {organization?.latitude ? `${organization.latitude.toFixed(4)}, ${organization.longitude?.toFixed(4)}` : "Not Established"}
+                    </p>
+                  </div>
+                </div>
+                <Button onClick={handleSetPerimeter} disabled={settingLocation} className="w-full">
+                  {settingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MapPin className="mr-2 h-4 w-4" />}
+                  Lock Perimeter to My Current Location
+                </Button>
+                <p className="text-[10px] text-center text-muted-foreground">Ensure you are physically at the facility entrance before locking.</p>
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <Link href={`/dashboard/admin/terminal`} target="_blank">
             <Button variant="outline" className="bg-white border-2 border-primary/20 hover:bg-primary/5">
               <Monitor className="mr-2 h-4 w-4 text-primary" />

@@ -1,12 +1,12 @@
-
 "use client";
 
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { Card, CardContent } from "@/components/ui/card";
-import { Activity, ShieldCheck, MapPin, Loader2 } from "lucide-react";
+import { Activity, ShieldCheck, MapPin, Loader2, Monitor } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { format } from "date-fns";
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 export default function TerminalPage() {
   const { organization, loading } = usePulseLogAuth();
@@ -99,7 +99,6 @@ export default function TerminalPage() {
   );
 }
 
-// Internal Badge component for Terminal styling
 function Badge({ className, variant, children }: any) {
   return (
     <div className={cn("inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2", className)}>
