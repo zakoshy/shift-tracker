@@ -9,6 +9,10 @@ export interface Organization {
   domain?: string;
   logoUrl?: string;
   createdAt: any;
+  // Location for Geofencing
+  latitude?: number;
+  longitude?: number;
+  radiusInMeters?: number;
 }
 
 export interface UserProfile {
@@ -33,4 +37,9 @@ export interface AttendanceLog {
   status: AttendanceStatus;
   handoverNotes: string | null;
   moodRating: MoodRating | null;
+  // Security metadata
+  verifiedLocation?: {
+    lat: number;
+    lng: number;
+  };
 }

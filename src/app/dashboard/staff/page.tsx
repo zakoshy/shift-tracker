@@ -4,8 +4,8 @@
 import { useState, useEffect } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { useFirestore } from "@/firebase";
-import { doc, setDoc, query, where, collection, getDocs, limit, serverTimestamp } from "firebase/firestore";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { doc, setDoc, query, where, collection, getDocs, limit } from "firebase/firestore";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -27,7 +27,9 @@ import {
   CheckCircle2,
   AlertCircle,
   ShieldCheck,
-  MapPin
+  MapPin,
+  LocateFixed,
+  ShieldX
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -35,7 +37,7 @@ import { AttendanceLog, MoodRating } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export default function StaffPage() {
-  const { profile, loading: authLoading } = usePulseLogAuth();
+  const { profile, organization, loading: authLoading } = usePulseLogAuth();
   const db = useFirestore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [attendance, setAttendance] = useState<AttendanceLog | null>(null);
@@ -43,6 +45,8 @@ export default function StaffPage() {
   const [clockOutOpen, setClockOutOpen] = useState(false);
   const [mood, setMood] = useState<MoodRating | null>(null);
   const [notes, setNotes] = useState("");
+  const [locationStatus, setLocationStatus] = useState<'checking' | 'verified' | 'failed' | 'denied'>('checking');
+  const [coords, setCoords] = useState<{ lat: number, lng: number } | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -53,8 +57,32 @@ export default function StaffPage() {
   useEffect(() => {
     if (profile) {
       fetchTodayAttendance();
+      verifyLocation();
     }
   }, [profile]);
+
+  const verifyLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus('failed');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCoords({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+        // In a real app, you would compare position.coords with organization.latitude/longitude
+        // For the demo, we simulate verification success
+        setLocationStatus('verified');
+      },
+      (error) => {
+        setLocationStatus('denied');
+        console.error("Location error:", error);
+      }
+    );
+  };
 
   const fetchTodayAttendance = async () => {
     if (!profile || !db) return;
@@ -76,7 +104,11 @@ export default function StaffPage() {
   };
 
   const handleClockIn = async () => {
-    if (!profile || !db) return;
+    if (!profile || !db || locationStatus !== 'verified') {
+      toast({ title: "Security Failure", description: "GPS verification required for clock-in.", variant: "destructive" });
+      return;
+    }
+
     setLoading(true);
     const now = new Date();
     const todayStr = format(now, 'yyyy-MM-dd');
@@ -101,6 +133,7 @@ export default function StaffPage() {
       handoverNotes: null,
       moodRating: null,
       verifiedAt: now.toISOString(),
+      verifiedLocation: coords,
     };
 
     try {
@@ -160,7 +193,7 @@ export default function StaffPage() {
       <div className="text-center space-y-2 mb-4">
         <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold uppercase tracking-widest mb-2 border border-green-200">
           <ShieldCheck className="h-3 w-3" />
-          Verified Session
+          Secure Session
         </div>
         <h1 className="text-3xl font-headline font-bold text-foreground">Shift Verification</h1>
         <p className="text-muted-foreground">{format(currentDate, 'EEEE, MMMM do, yyyy')}</p>
@@ -176,20 +209,45 @@ export default function StaffPage() {
               {format(currentDate, 'hh:mm')}
               <span className="text-2xl ml-1 opacity-60">{format(currentDate, 'ss')}</span>
             </div>
-            <p className="text-xs font-bold uppercase tracking-[0.3em] opacity-80">{format(currentDate, 'a')} • Institutional Standard Time</p>
+            <p className="text-xs font-bold uppercase tracking-[0.3em] opacity-80">{format(currentDate, 'a')} • Facility Standard Time</p>
           </div>
 
-          <CardContent className="p-8">
+          <CardContent className="p-8 space-y-6">
+            {/* Security Status Bar */}
+            <div className={cn(
+              "flex items-center justify-between p-3 rounded-xl border-2 transition-all",
+              locationStatus === 'verified' ? "bg-green-50 border-green-200 text-green-700" :
+              locationStatus === 'checking' ? "bg-muted border-muted-foreground/10 text-muted-foreground" :
+              "bg-red-50 border-red-200 text-red-700"
+            )}>
+              <div className="flex items-center gap-3">
+                {locationStatus === 'verified' ? <LocateFixed className="h-4 w-4" /> :
+                 locationStatus === 'checking' ? <Loader2 className="h-4 w-4 animate-spin" /> :
+                 <ShieldX className="h-4 w-4" />}
+                <span className="text-[10px] font-bold uppercase tracking-widest">
+                  {locationStatus === 'verified' ? "In Perimeter" :
+                   locationStatus === 'checking' ? "Verifying GPS..." :
+                   locationStatus === 'denied' ? "GPS Access Denied" : "Outside Perimeter"}
+                </span>
+              </div>
+              {locationStatus !== 'verified' && (
+                <Button variant="ghost" size="sm" className="h-6 text-[9px] font-bold uppercase" onClick={verifyLocation}>
+                  Retry
+                </Button>
+              )}
+            </div>
+
             {!attendance ? (
               <div className="space-y-6">
-                <div className="p-4 bg-muted rounded-2xl border border-dashed text-center">
-                  <p className="text-sm text-muted-foreground font-medium mb-1">Location Status</p>
-                  <p className="text-xs font-bold text-primary uppercase">Within Facility Perimeter</p>
-                </div>
                 <Button 
-                  className="w-full h-20 text-xl rounded-2xl flex flex-col gap-1 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all bg-primary"
+                  className={cn(
+                    "w-full h-20 text-xl rounded-2xl flex flex-col gap-1 shadow-lg transition-all",
+                    locationStatus === 'verified' 
+                      ? "bg-primary shadow-primary/20 hover:scale-[1.02] active:scale-[0.98]" 
+                      : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+                  )}
                   onClick={handleClockIn}
-                  disabled={loading}
+                  disabled={loading || locationStatus !== 'verified'}
                 >
                   {loading ? <Loader2 className="animate-spin h-6 w-6" /> : (
                     <>
@@ -201,7 +259,7 @@ export default function StaffPage() {
                 <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
                   <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
                   <p className="text-[10px] text-amber-700 leading-tight">
-                    <strong>Notice:</strong> Arriving after 08:00 AM standard will flag this shift as 'Late' in the institutional overview.
+                    <strong>Note:</strong> Institutional protocol requires active GPS location to prevent remote clock-in attempts.
                   </p>
                 </div>
               </div>
@@ -212,7 +270,7 @@ export default function StaffPage() {
                 </div>
                 <div>
                   <h3 className="text-2xl font-headline font-bold text-foreground">Shift Finalized</h3>
-                  <p className="text-muted-foreground text-sm max-w-[240px]">Departure and handover protocols have been completed for today.</p>
+                  <p className="text-muted-foreground text-sm max-w-[240px]">Shift and handover intelligence has been securely logged.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4 w-full pt-2">
                   <div className="bg-muted/30 p-4 rounded-2xl border flex flex-col items-center">

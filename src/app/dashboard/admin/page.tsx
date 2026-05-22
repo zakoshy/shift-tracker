@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { useFirestore } from "@/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -20,13 +20,16 @@ import {
   TrendingUp,
   BrainCircuit,
   Loader2,
-  ShieldCheck
+  ShieldCheck,
+  Monitor,
+  Maximize
 } from "lucide-react";
 import { format } from "date-fns";
 import { AttendanceLog } from "@/lib/types";
 import { summarizeHandoverNotes, SummarizeHandoverNotesOutput } from "@/ai/flows/summarize-handover-notes";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 export default function AdminDashboard() {
   const { profile, organization } = usePulseLogAuth();
@@ -49,7 +52,8 @@ export default function AdminDashboard() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AttendanceLog[];
-      const sortedData = data.sort((a, b) => {
+      // Client-side sort to avoid index requirements for now
+      const sortedData = [...data].sort((a, b) => {
         const timeA = a.clockInTime || '';
         const timeB = b.clockInTime || '';
         return timeB.localeCompare(timeA);
@@ -106,11 +110,13 @@ export default function AdminDashboard() {
           <h1 className="text-3xl font-headline font-bold text-foreground">Institutional Overview</h1>
           <p className="text-muted-foreground">{organization?.name} • Live Status Grid for {format(new Date(), 'MMMM do, yyyy')}</p>
         </div>
-        <div className="flex gap-3">
-          <Button variant="outline" className="bg-white border-2">
-            <Download className="mr-2 h-4 w-4" />
-            Export Audit Logs
-          </Button>
+        <div className="flex flex-wrap gap-3">
+          <Link href={`/dashboard/admin/terminal`} target="_blank">
+            <Button variant="outline" className="bg-white border-2 border-primary/20 hover:bg-primary/5">
+              <Monitor className="mr-2 h-4 w-4 text-primary" />
+              Launch Scan Terminal
+            </Button>
+          </Link>
           <Button onClick={handleGenAIReport} disabled={summarizing || logs.length === 0} className="shadow-lg shadow-primary/20 bg-primary">
             {summarizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BrainCircuit className="mr-2 h-4 w-4" />}
             Synthesize Handovers
