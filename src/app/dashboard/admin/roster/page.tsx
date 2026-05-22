@@ -94,13 +94,14 @@ export default function StaffRosterPage() {
   };
 
   const handleDeleteStaff = async (userId: string, name: string) => {
-    if (confirm(`Remove ${name} from institutional access?`)) {
-      try {
-        await deleteDoc(doc(db, "users", userId));
-        toast({ title: "Personnel Revoked", description: `${name} has been removed.` });
-      } catch (err) {
-        toast({ title: "Error", description: "Authorization failure during removal.", variant: "destructive" });
-      }
+    const confirmDelete = window.confirm(`SECURITY ALERT: You are about to permanently revoke institutional access for ${name}. This staff member will no longer be able to clock in. Proceed?`);
+    if (!confirmDelete) return;
+
+    try {
+      await deleteDoc(doc(db, "users", userId));
+      toast({ title: "Personnel Revoked", description: `${name} has been removed.` });
+    } catch (err) {
+      toast({ title: "Error", description: "Authorization failure during removal.", variant: "destructive" });
     }
   };
 
@@ -268,7 +269,7 @@ export default function StaffRosterPage() {
                 </TableHeader>
                 <TableBody>
                   {staff.map((member) => (
-                    <TableRow key={member.uid} className="hover:bg-muted/10">
+                    <TableRow key={member.uid} className="hover:bg-muted/10 group">
                       <TableCell className="pl-6 font-bold text-sm">
                         <div className="flex items-center gap-3">
                           <div className="h-8 w-8 rounded-full bg-primary/5 text-primary border flex items-center justify-center text-[10px] font-black">
@@ -289,7 +290,7 @@ export default function StaffRosterPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right pr-6">
-                        <div className="flex justify-end gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
+                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingStaff(member)}>
                             <Edit2 className="h-4 w-4" />
                           </Button>

@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { useFirestore } from "@/firebase";
-import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs, writeBatch, Timestamp } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs, writeBatch } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,8 +38,7 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogDescription,
-  DialogTrigger,
-  DialogFooter
+  DialogTrigger
 } from "@/components/ui/dialog";
 
 export default function AdminDashboard() {
@@ -111,7 +110,10 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteLog = async (logId: string) => {
-    if (!db || !confirm("Permanently remove this shift record from the institutional log?")) return;
+    if (!db) return;
+    const confirmDelete = window.confirm("SECURITY ALERT: This will permanently remove this shift record from the institutional log. Are you sure you wish to proceed?");
+    if (!confirmDelete) return;
+    
     try {
       await deleteDoc(doc(db, "attendance_logs", logId));
       toast({ title: "Record Deleted", description: "The shift log has been removed." });
@@ -121,7 +123,10 @@ export default function AdminDashboard() {
   };
 
   const handleCleanupOldLogs = async () => {
-    if (!db || !profile?.organizationId || !confirm("This will permanently delete all attendance logs older than 30 days. Proceed?")) return;
+    if (!db || !profile?.organizationId) return;
+    const confirmCleanup = window.confirm("CAUTION: This will permanently delete all attendance logs older than 30 days. This action is irreversible and compliant with data retention protocols. Proceed?");
+    if (!confirmCleanup) return;
+
     setCleaningUp(true);
     try {
       const thirtyDaysAgo = subDays(new Date(), 30);
