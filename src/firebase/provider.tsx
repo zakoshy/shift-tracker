@@ -1,9 +1,11 @@
+
 'use client';
 
 import React, { createContext, useContext } from 'react';
 import { FirebaseApp } from 'firebase/app';
 import { Firestore } from 'firebase/firestore';
 import { Auth } from 'firebase/auth';
+import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
 
 interface FirebaseContextType {
   firebaseApp: FirebaseApp;
@@ -13,9 +15,6 @@ interface FirebaseContextType {
 
 const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
 
-/**
- * The core Firebase Provider that holds the initialized service instances.
- */
 export function FirebaseProvider({
   children,
   firebaseApp,
@@ -29,14 +28,12 @@ export function FirebaseProvider({
 }) {
   return (
     <FirebaseContext.Provider value={{ firebaseApp, firestore, auth }}>
+      <FirebaseErrorListener />
       {children}
     </FirebaseContext.Provider>
   );
 }
 
-/**
- * Hook to access the full Firebase context.
- */
 export function useFirebase() {
   const context = useContext(FirebaseContext);
   if (!context) {
@@ -45,17 +42,6 @@ export function useFirebase() {
   return context;
 }
 
-/**
- * Hook to access the FirebaseApp instance.
- */
 export const useFirebaseApp = () => useFirebase().firebaseApp;
-
-/**
- * Hook to access the Firestore instance.
- */
 export const useFirestore = () => useFirebase().firestore;
-
-/**
- * Hook to access the Auth instance.
- */
 export const useAuth = () => useFirebase().auth;
