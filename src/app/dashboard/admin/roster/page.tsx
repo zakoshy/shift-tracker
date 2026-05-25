@@ -49,7 +49,8 @@ import {
   UserCheck,
   AlertTriangle,
   Clock,
-  ShieldCheck
+  ShieldCheck,
+  Info
 } from "lucide-react";
 import { UserProfile } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -84,8 +85,9 @@ export default function StaffRosterPage() {
   const { data: staff, loading: rosterLoading } = useCollection<UserProfile>(staffQuery);
 
   const inviteUrl = useMemo(() => {
-    if (typeof window === 'undefined' || !profile?.organizationId) return "";
-    return `${window.location.origin}/join/${profile.organizationId}`;
+    if (typeof window === 'undefined' || !profile?.organizationId || profile.organizationId === "undefined") return "";
+    const origin = window.location.origin;
+    return `${origin}/join/${profile.organizationId}`;
   }, [profile?.organizationId]);
 
   const handleCopyLink = () => {
@@ -97,20 +99,20 @@ export default function StaffRosterPage() {
   };
 
   const handleDeleteStaff = async (userId: string, name: string) => {
-    const confirmDelete = window.confirm(`SECURITY ALERT: This will permanently revoke access for ${name}. All profile data will be purged. Are you sure?`);
+    const confirmDelete = window.confirm(`SECURITY ALERT: This will remove ${name} from the Operational Roster. Note: Their Login Account remains in the Auth System for security. To fully purge, manage via Firebase Console.`);
     if (!confirmDelete) return;
 
     try {
       await deleteDoc(doc(db, "users", userId));
-      toast({ title: "Personnel Revoked", description: `${name} has been removed from the roster.` });
+      toast({ title: "Personnel Removed", description: `${name} has been removed from the operational roster.` });
     } catch (err) {
-      toast({ title: "Error", description: "Authorization failure during revocation.", variant: "destructive" });
+      toast({ title: "Error", description: "Authorization failure during removal.", variant: "destructive" });
     }
   };
 
   const handleUpdateStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingStaff) return;
+    if (!editingStaff || isUpdating) return;
     setIsUpdating(true);
     try {
       await updateDoc(doc(db, "users", editingStaff.uid), {
@@ -130,10 +132,9 @@ export default function StaffRosterPage() {
 
   const handleManualCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile?.organizationId) return;
+    if (!profile?.organizationId || isCreating) return;
     setIsCreating(true);
 
-    // Initialize a secondary Firebase app to prevent logging out the admin
     const secondaryAppName = `secondary-${Date.now()}`;
     const secondaryApp = initializeApp(firebaseConfig as any, secondaryAppName);
     const secondaryAuth = getAuth(secondaryApp);
@@ -154,13 +155,16 @@ export default function StaffRosterPage() {
         createdAt: serverTimestamp(),
       });
       
-      // Sign out of the secondary app session immediately to protect current admin session
       await signOut(secondaryAuth);
       
       toast({ title: "Personnel Added", description: `${manualName} has been registered and verified.` });
       setManualName(""); setManualEmail(""); setManualPassword(""); setManualDept("");
     } catch (error: any) {
-      toast({ title: "Creation Failed", description: error.message, variant: "destructive" });
+      let message = error.message;
+      if (error.code === 'auth/email-already-in-use') {
+        message = "This email is already registered in the login system. If you previously deleted this person, you must delete their account in the Firebase Auth console first.";
+      }
+      toast({ title: "Registration Protocol Halted", description: message, variant: "destructive" });
     } finally {
       setIsCreating(false);
     }
@@ -175,7 +179,7 @@ export default function StaffRosterPage() {
         </div>
         <Dialog>
           <DialogTrigger asChild>
-            <Button className="rounded-xl shadow-lg bg-primary hover:bg-primary/90 px-6">
+            <Button className="rounded-xl shadow-lg bg-primary hover:bg-primary/90 px-6 h-11">
               <UserPlus className="mr-2 h-4 w-4" />
               Add Personnel
             </Button>
@@ -218,32 +222,36 @@ export default function StaffRosterPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <Label htmlFor="mName" className="text-[10px] uppercase font-bold tracking-widest">Full Name</Label>
-                      <Input id="mName" value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Name" required className="rounded-xl" />
+                      <Input id="mName" value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Name" required className="rounded-xl h-11" />
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="mDept" className="text-[10px] uppercase font-bold tracking-widest">Department</Label>
-                      <Input id="mDept" value={manualDept} onChange={e => setManualDept(e.target.value)} placeholder="e.g., Sales, Ops" required className="rounded-xl" />
+                      <Input id="mDept" value={manualDept} onChange={e => setManualDept(e.target.value)} placeholder="e.g., Sales, Ops" required className="rounded-xl h-11" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <Label htmlFor="mShiftS" className="text-[10px] uppercase font-bold tracking-widest">Shift Start</Label>
-                      <Input id="mShiftS" type="time" value={manualShiftStart} onChange={e => setManualShiftStart(e.target.value)} required className="rounded-xl" />
+                      <Input id="mShiftS" type="time" value={manualShiftStart} onChange={e => setManualShiftStart(e.target.value)} required className="rounded-xl h-11" />
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="mShiftE" className="text-[10px] uppercase font-bold tracking-widest">Shift End</Label>
-                      <Input id="mShiftE" type="time" value={manualShiftEnd} onChange={e => setManualShiftEnd(e.target.value)} required className="rounded-xl" />
+                      <Input id="mShiftE" type="time" value={manualShiftEnd} onChange={e => setManualShiftEnd(e.target.value)} required className="rounded-xl h-11" />
                     </div>
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="mEmail" className="text-[10px] uppercase font-bold tracking-widest">Work Email</Label>
-                    <Input id="mEmail" type="email" value={manualEmail} onChange={e => setManualEmail(e.target.value)} placeholder="email@org.com" required className="rounded-xl" />
+                    <Input id="mEmail" type="email" value={manualEmail} onChange={e => setManualEmail(e.target.value)} placeholder="email@org.com" required className="rounded-xl h-11" />
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="mPass" className="text-[10px] uppercase font-bold tracking-widest">Password</Label>
-                    <Input id="mPass" type="password" value={manualPassword} onChange={e => setManualPassword(e.target.value)} placeholder="••••••••" required className="rounded-xl" />
+                    <Input id="mPass" type="password" value={manualPassword} onChange={e => setManualPassword(e.target.value)} placeholder="••••••••" required className="rounded-xl h-11" />
                   </div>
-                  <Button className="w-full h-12 rounded-xl" type="submit" disabled={isCreating}>
+                  <div className="bg-amber-50 dark:bg-amber-900/10 p-3 rounded-xl border border-amber-200 dark:border-amber-900/30 flex items-start gap-3">
+                    <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[10px] text-amber-800 dark:text-amber-200 leading-tight">If an email was previously used, ensure the Auth account is deleted in the Firebase Console before re-registering.</p>
+                  </div>
+                  <Button className="w-full h-12 rounded-xl mt-2" type="submit" disabled={isCreating}>
                     {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Register Profile"}
                   </Button>
                 </form>
@@ -279,13 +287,16 @@ export default function StaffRosterPage() {
                 </TableHeader>
                 <TableBody>
                   {staff.map((member) => (
-                    <TableRow key={member.uid} className="hover:bg-muted/10 group">
+                    <TableRow key={member.uid} className="hover:bg-muted/10 group border-b last:border-0">
                       <TableCell className="pl-6 font-bold text-sm">
                         <div className="flex items-center gap-3">
                           <div className="h-8 w-8 rounded-full bg-primary/5 text-primary border flex items-center justify-center text-[10px] font-black">
                             {member.name.charAt(0)}
                           </div>
-                          {member.name}
+                          <div className="flex flex-col">
+                            <span>{member.name}</span>
+                            <span className="text-[10px] font-medium text-muted-foreground">{member.email}</span>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -347,20 +358,20 @@ export default function StaffRosterPage() {
           <form onSubmit={handleUpdateStaff} className="space-y-4 py-4">
             <div className="space-y-1">
               <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Name</Label>
-              <Input value={editingStaff?.name || ""} onChange={e => setEditingStaff(p => p ? {...p, name: e.target.value} : null)} required className="rounded-xl" />
+              <Input value={editingStaff?.name || ""} onChange={e => setEditingStaff(p => p ? {...p, name: e.target.value} : null)} required className="rounded-xl h-11" />
             </div>
             <div className="space-y-1">
               <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Department</Label>
-              <Input value={editingStaff?.department || ""} onChange={e => setEditingStaff(p => p ? {...p, department: e.target.value} : null)} required className="rounded-xl" />
+              <Input value={editingStaff?.department || ""} onChange={e => setEditingStaff(p => p ? {...p, department: e.target.value} : null)} required className="rounded-xl h-11" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Shift Start</Label>
-                <Input type="time" value={editingStaff?.shiftStart || "08:00"} onChange={e => setEditingStaff(p => p ? {...p, shiftStart: e.target.value} : null)} required className="rounded-xl" />
+                <Input type="time" value={editingStaff?.shiftStart || "08:00"} onChange={e => setEditingStaff(p => p ? {...p, shiftStart: e.target.value} : null)} required className="rounded-xl h-11" />
               </div>
               <div className="space-y-1">
                 <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Shift End</Label>
-                <Input type="time" value={editingStaff?.shiftEnd || "17:00"} onChange={e => setEditingStaff(p => p ? {...p, shiftEnd: e.target.value} : null)} required className="rounded-xl" />
+                <Input type="time" value={editingStaff?.shiftEnd || "17:00"} onChange={e => setEditingStaff(p => p ? {...p, shiftEnd: e.target.value} : null)} required className="rounded-xl h-11" />
               </div>
             </div>
             <DialogFooter className="pt-6">
