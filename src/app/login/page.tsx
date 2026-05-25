@@ -1,8 +1,10 @@
+
 "use client";
 
 import { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { useAuth } from "@/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { useAuth, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,16 +20,49 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const auth = useAuth();
+  const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth) return;
+    if (!auth || !db) return;
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push("/");
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Check role for redirection
+      const profileDoc = await getDoc(doc(db, "users", user.uid));
+      if (profileDoc.exists()) {
+        const data = profileDoc.data();
+        if (data.role === 'super-admin') {
+          router.push("/dashboard/super-admin");
+          return;
+        }
+        
+        // Check for suspension
+        if (data.organizationId) {
+          const orgDoc = await getDoc(doc(db, "organizations", data.organizationId));
+          if (orgDoc.exists() && orgDoc.data().suspended) {
+            toast({
+              title: "Access Restricted",
+              description: "Your organization account has been suspended. Please contact your administrator.",
+              variant: "destructive",
+            });
+            setLoading(false);
+            return;
+          }
+        }
+
+        if (data.role === 'admin') {
+          router.push("/dashboard/admin");
+        } else {
+          router.push("/dashboard/staff");
+        }
+      } else {
+        router.push("/");
+      }
     } catch (error: any) {
       toast({
         title: "Authentication Failed",

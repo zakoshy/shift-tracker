@@ -1,6 +1,13 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper to check if the requesting user is a super admin
+    function isSuperAdmin() {
+      return request.auth != null && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super-admin';
+    }
+
     // Helper to check if the requesting user is an admin of the given organization
     function isAdmin(orgId) {
       return request.auth != null && 
@@ -8,30 +15,36 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
     }
 
-    // Organizations: Authenticated users can create (during signup) and read.
+    // Helper to check if an organization is suspended
+    function isNotSuspended(orgId) {
+      return get(/databases/$(database)/documents/organizations/$(orgId)).data.suspended != true;
+    }
+
+    // Organizations: Super admins can do everything. Others can read their own or create.
     match /organizations/{orgId} {
       allow create: if request.auth != null;
-      allow read: if request.auth != null;
-      allow update, delete: if isAdmin(orgId);
+      allow read: if request.auth != null && (isSuperAdmin() || request.auth.uid != null);
+      allow update, delete: if isSuperAdmin() || isAdmin(orgId);
     }
 
-    // User Profiles: Users can read/write their own profiles. Admins can read all profiles in their org.
+    // User Profiles: Super admins can do everything. Users can read/write their own.
     match /users/{userId} {
       allow create: if request.auth != null;
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin(resource.data.organizationId));
-      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin(resource.data.organizationId));
-      allow delete: if isAdmin(resource.data.organizationId);
+      allow read: if request.auth != null && (isSuperAdmin() || request.auth.uid == userId || isAdmin(resource.data.organizationId));
+      allow update: if request.auth != null && (isSuperAdmin() || request.auth.uid == userId || isAdmin(resource.data.organizationId));
+      allow delete: if isSuperAdmin() || isAdmin(resource.data.organizationId);
     }
 
-    // Attendance Logs: Staff can create/read/update their own logs. Admins can read all logs for their org.
+    // Attendance Logs: Staff can create/read/update their own if not suspended. Admins can read theirs.
     match /attendance_logs/{logId} {
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid && isNotSuspended(request.resource.data.organizationId);
       allow read: if request.auth != null && (
+        isSuperAdmin() ||
         resource.data.userId == request.auth.uid || 
         isAdmin(resource.data.organizationId)
       );
-      allow update: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow delete: if isAdmin(resource.data.organizationId);
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid && isNotSuspended(resource.data.organizationId);
+      allow delete: if isSuperAdmin() || isAdmin(resource.data.organizationId);
     }
   }
 }

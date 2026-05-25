@@ -12,8 +12,8 @@ import {
   Users, 
   LogOut,
   Loader2,
-  ChevronRight,
-  User
+  ShieldAlert,
+  Building
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { 
@@ -44,14 +44,22 @@ export function SidebarNav() {
     router.push("/login");
   };
 
-  const navItems = profile?.role === 'admin' 
-    ? [
+  const navItems = (() => {
+    if (profile?.role === 'super-admin') {
+      return [
+        { label: 'SaaS Overview', icon: LayoutDashboard, href: '/dashboard/super-admin' },
+      ];
+    }
+    if (profile?.role === 'admin') {
+      return [
         { label: 'Overview', icon: LayoutDashboard, href: '/dashboard/admin' },
         { label: 'Staff Roster', icon: Users, href: '/dashboard/admin/roster' },
-      ]
-    : [
-        { label: 'My Shift', icon: Clock, href: '/dashboard/staff' },
       ];
+    }
+    return [
+      { label: 'My Shift', icon: Clock, href: '/dashboard/staff' },
+    ];
+  })();
 
   const handleLinkClick = () => {
     setOpenMobile(false);
@@ -65,7 +73,9 @@ export function SidebarNav() {
             <Activity className="h-7 w-7 text-primary transition-transform group-hover:scale-110 shrink-0" strokeWidth={2.5} />
             <div className="flex flex-col group-data-[collapsible=icon]:hidden">
               <span className="text-xl font-headline font-bold text-primary leading-tight">PulseLog</span>
-              {organization && (
+              {profile?.role === 'super-admin' ? (
+                <span className="text-[10px] text-destructive uppercase tracking-widest font-bold">SUPER ADMIN</span>
+              ) : organization && (
                 <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold truncate max-w-[120px]">
                   {organization.name}
                 </span>
@@ -81,7 +91,7 @@ export function SidebarNav() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest opacity-60 group-data-[collapsible=icon]:hidden">
-            Navigation
+            {profile?.role === 'super-admin' ? 'Global Management' : 'Navigation'}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -123,7 +133,7 @@ export function SidebarNav() {
                   </div>
                   <div className="flex flex-col min-w-0 overflow-hidden group-data-[collapsible=icon]:hidden">
                     <span className="text-sm font-bold text-foreground truncate">{profile?.name || 'User'}</span>
-                    <span className="text-[10px] text-muted-foreground truncate uppercase font-bold tracking-tighter">{profile?.department}</span>
+                    <span className="text-[10px] text-muted-foreground truncate uppercase font-bold tracking-tighter">{profile?.department || 'PulseLog'}</span>
                   </div>
                 </>
               )}

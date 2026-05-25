@@ -1,5 +1,5 @@
 
-export type UserRole = 'admin' | 'staff';
+export type UserRole = 'admin' | 'staff' | 'super-admin';
 export type AttendanceStatus = 'on-time' | 'late' | 'early-departure' | 'present' | 'overtime';
 export type MoodRating = 1 | 2 | 3; // 1: Stressed, 2: Hectic, 3: Smooth
 
@@ -13,6 +13,7 @@ export interface Organization {
   longitude?: number;
   radiusInMeters?: number;
   overtimeEnabled: boolean;
+  suspended?: boolean;
 }
 
 export interface UserProfile {

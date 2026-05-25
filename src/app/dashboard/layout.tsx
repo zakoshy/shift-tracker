@@ -5,20 +5,31 @@ import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { SidebarNav } from "@/components/dashboard/sidebar-nav";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Loader2, Menu, Activity, PanelLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2, Activity } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useToast } from "@/hooks/use-toast";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, profile, loading } = usePulseLogAuth();
+  const { user, profile, organization, loading } = usePulseLogAuth();
   const router = useRouter();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
     }
-  }, [user, loading, router]);
+
+    // Handle suspension at layout level
+    if (!loading && profile && profile.role !== 'super-admin' && organization?.suspended) {
+      toast({
+        title: "Account Suspended",
+        description: "Access has been restricted for your organization.",
+        variant: "destructive"
+      });
+      router.push("/login");
+    }
+  }, [user, profile, organization, loading, router, toast]);
 
   if (loading) {
     return (

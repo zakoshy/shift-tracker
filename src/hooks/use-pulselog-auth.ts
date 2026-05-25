@@ -26,7 +26,6 @@ export function usePulseLogAuth() {
           // Auto-resync for existing Auth users joining via a new Org Link
           if (!profileDoc.exists() && params.orgId) {
             const orgId = params.orgId as string;
-            // Basic fallback profile if they were previously deleted but are re-joining
             await setDoc(profileDocRef, {
               uid: user.uid,
               organizationId: orgId,
@@ -43,9 +42,12 @@ export function usePulseLogAuth() {
             const userData = profileDoc.data() as UserProfile;
             setProfile(userData);
 
-            const orgDoc = await getDoc(doc(db, "organizations", userData.organizationId));
-            if (orgDoc.exists()) {
-              setOrganization({ id: orgDoc.id, ...orgDoc.data() } as Organization);
+            // Super admins might not belong to an organization
+            if (userData.organizationId) {
+              const orgDoc = await getDoc(doc(db, "organizations", userData.organizationId));
+              if (orgDoc.exists()) {
+                setOrganization({ id: orgDoc.id, ...orgDoc.data() } as Organization);
+              }
             }
           }
         } catch (error) {
