@@ -12,7 +12,8 @@
         "latitude": { "type": "number" },
         "longitude": { "type": "number" },
         "radiusInMeters": { "type": "number" },
-        "overtimeEnabled": { "type": "boolean", "default": false }
+        "overtimeEnabled": { "type": "boolean", "default": false },
+        "suspended": { "type": "boolean", "default": false }
       },
       "required": ["id", "name"]
     },
@@ -25,13 +26,13 @@
         "organizationId": { "type": "string" },
         "email": { "type": "string", "format": "email" },
         "name": { "type": "string" },
-        "role": { "type": "string", "enum": ["admin", "staff"] },
+        "role": { "type": "string", "enum": ["admin", "staff", "super-admin"] },
         "department": { "type": "string" },
         "shiftStart": { "type": "string", "description": "HH:mm format, e.g., 08:00" },
         "shiftEnd": { "type": "string", "description": "HH:mm format, e.g., 17:00" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "organizationId", "email", "name", "role"]
+      "required": ["uid", "email", "name", "role"]
     },
     "AttendanceLog": {
       "title": "Attendance Log",
