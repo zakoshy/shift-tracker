@@ -40,7 +40,8 @@ import {
   PlusCircle,
   Trash2,
   Database,
-  UserCheck
+  UserCheck,
+  BookOpen
 } from "lucide-react";
 import { format, subDays, parse } from "date-fns";
 import { AttendanceLog, UserProfile } from "@/lib/types";
@@ -69,7 +70,7 @@ export default function AdminDashboard() {
   const [cleaningUp, setCleaningUp] = useState(false);
   const { toast } = useToast();
 
-  // Manual Attendance State
+  // Manual Attendance State (Inclusion Protocol)
   const [manualOpen, setManualOpen] = useState(false);
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [manualTime, setManualTime] = useState(format(new Date(), "HH:mm"));
@@ -154,6 +155,7 @@ export default function AdminDashboard() {
         toast({ title: "Departure Logged", description: `Supervisor override for ${staffMember.name}` });
       }
       setManualOpen(false);
+      setSelectedStaffId("");
     } catch (err) {
       toast({ title: "Error", description: "Manual log failed.", variant: "destructive" });
     } finally {
@@ -265,24 +267,25 @@ export default function AdminDashboard() {
           <p className="text-sm text-muted-foreground mt-1">Institutional workforce monitoring for <span className="font-bold text-primary">{organization?.name}</span></p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* Inclusion Protocol: Digital Ledger Button */}
           <Dialog open={manualOpen} onOpenChange={setManualOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="rounded-xl border-2">
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Manual Log
+              <Button variant="outline" size="sm" className="rounded-xl border-2 bg-primary/5 border-primary/20 hover:bg-primary/10">
+                <BookOpen className="mr-2 h-4 w-4 text-primary" />
+                Digital Ledger (Inclusion)
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-[90vw] sm:max-w-md rounded-3xl">
               <DialogHeader>
-                <DialogTitle>Administrative Override</DialogTitle>
-                <DialogDescription>Manually log attendance for staff without devices.</DialogDescription>
+                <DialogTitle>Administrative Protocol</DialogTitle>
+                <DialogDescription>Manually log attendance for personnel without smart devices.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-1">
                   <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Select Personnel</Label>
                   <Select onValueChange={setSelectedStaffId}>
                     <SelectTrigger className="rounded-xl h-11">
-                      <SelectValue placeholder="Select staff member" />
+                      <SelectValue placeholder="Search by name..." />
                     </SelectTrigger>
                     <SelectContent>
                       {allStaff?.map(s => (
@@ -293,19 +296,19 @@ export default function AdminDashboard() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Action Type</Label>
+                    <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Protocol Type</Label>
                     <Select onValueChange={(v: any) => setManualType(v)} defaultValue="in">
                       <SelectTrigger className="rounded-xl h-11">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="in">Arrival (Clock In)</SelectItem>
-                        <SelectItem value="out">Departure (Clock Out)</SelectItem>
+                        <SelectItem value="in">Arrival (In)</SelectItem>
+                        <SelectItem value="out">Departure (Out)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Protocol Time</Label>
+                    <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Log Time</Label>
                     <Input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)} className="rounded-xl h-11" />
                   </div>
                 </div>
@@ -313,7 +316,7 @@ export default function AdminDashboard() {
               <DialogFooter>
                 <Button onClick={handleManualAttendance} disabled={isLoggingManual || !selectedStaffId} className="w-full h-11 rounded-xl">
                   {isLoggingManual ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="mr-2 h-4 w-4" />}
-                  Finalize Manual Entry
+                  Finalize Entry
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -362,7 +365,7 @@ export default function AdminDashboard() {
                       className="w-full h-10 rounded-xl"
                     >
                       {cleaningUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <History className="mr-2 h-4 w-4" />}
-                      Purge Records (&gt;30 Days)
+                      Purge Logs (&gt;30 Days)
                     </Button>
                   </div>
                 </div>

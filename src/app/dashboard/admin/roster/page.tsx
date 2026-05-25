@@ -48,14 +48,15 @@ import {
   Edit2,
   UserCheck,
   AlertTriangle,
-  Clock
+  Clock,
+  ShieldCheck
 } from "lucide-react";
 import { UserProfile } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { QRCodeSVG } from "qrcode.react";
 
 export default function StaffRosterPage() {
-  const { profile, organization } = usePulseLogAuth();
+  const { profile, organization, loading: authLoading } = usePulseLogAuth();
   const db = useFirestore();
   const mainAuth = useAuth();
   const { toast } = useToast();
@@ -80,7 +81,7 @@ export default function StaffRosterPage() {
     );
   }, [db, profile?.organizationId]);
 
-  const { data: staff, loading } = useCollection<UserProfile>(staffQuery);
+  const { data: staff, loading: rosterLoading } = useCollection<UserProfile>(staffQuery);
 
   const inviteUrl = useMemo(() => {
     if (typeof window === 'undefined' || !profile?.organizationId) return "";
@@ -96,14 +97,14 @@ export default function StaffRosterPage() {
   };
 
   const handleDeleteStaff = async (userId: string, name: string) => {
-    const confirmDelete = window.confirm(`SECURITY ALERT: Revoke access for ${name}?`);
+    const confirmDelete = window.confirm(`SECURITY ALERT: This will permanently revoke access for ${name}. All profile data will be purged. Are you sure?`);
     if (!confirmDelete) return;
 
     try {
       await deleteDoc(doc(db, "users", userId));
-      toast({ title: "Personnel Revoked", description: `${name} has been removed.` });
+      toast({ title: "Personnel Revoked", description: `${name} has been removed from the roster.` });
     } catch (err) {
-      toast({ title: "Error", description: "Authorization failure.", variant: "destructive" });
+      toast({ title: "Error", description: "Authorization failure during revocation.", variant: "destructive" });
     }
   };
 
@@ -118,10 +119,10 @@ export default function StaffRosterPage() {
         shiftStart: editingStaff.shiftStart || "08:00",
         shiftEnd: editingStaff.shiftEnd || "17:00",
       });
-      toast({ title: "Profile Secured", description: "Shift data updated." });
+      toast({ title: "Profile Secured", description: "Personnel shift and department data updated." });
       setEditingStaff(null);
     } catch (err) {
-      toast({ title: "Update Failed", description: "Sync failure.", variant: "destructive" });
+      toast({ title: "Update Failed", description: "Data synchronization failure.", variant: "destructive" });
     } finally {
       setIsUpdating(false);
     }
@@ -153,10 +154,10 @@ export default function StaffRosterPage() {
         createdAt: serverTimestamp(),
       });
       
-      // Sign out of the secondary app session immediately
+      // Sign out of the secondary app session immediately to protect current admin session
       await signOut(secondaryAuth);
       
-      toast({ title: "Personnel Added", description: `${manualName} registered.` });
+      toast({ title: "Personnel Added", description: `${manualName} has been registered and verified.` });
       setManualName(""); setManualEmail(""); setManualPassword(""); setManualDept("");
     } catch (error: any) {
       toast({ title: "Creation Failed", description: error.message, variant: "destructive" });
@@ -170,7 +171,7 @@ export default function StaffRosterPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6">
         <div>
           <h1 className="text-3xl font-headline font-extrabold text-foreground tracking-tight">Personnel Roster</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage authorizations and shift rewards.</p>
+          <p className="text-sm text-muted-foreground mt-1">Manage institutional authorizations and shift reward parameters.</p>
         </div>
         <Dialog>
           <DialogTrigger asChild>
@@ -181,8 +182,8 @@ export default function StaffRosterPage() {
           </DialogTrigger>
           <DialogContent className="sm:max-w-2xl rounded-3xl">
             <DialogHeader>
-              <DialogTitle className="text-2xl font-headline font-bold">Onboarding Protocol</DialogTitle>
-              <DialogDescription>Add staff via secure link or manual entry.</DialogDescription>
+              <DialogTitle className="text-2xl font-headline font-bold">Personnel Onboarding Protocol</DialogTitle>
+              <DialogDescription>Add new personnel via secure invitation link or manual administrative entry.</DialogDescription>
             </DialogHeader>
             <Tabs defaultValue="qr" className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6 bg-muted/50 p-1 rounded-xl">
@@ -204,7 +205,7 @@ export default function StaffRosterPage() {
                   <div className="w-full space-y-2 text-center">
                     <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Registration URL</p>
                     <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl border font-mono text-xs break-all">
-                      <span className="flex-1 opacity-60">{inviteUrl || "Loading organization context..."}</span>
+                      <span className="flex-1 opacity-60">{inviteUrl || "Waiting for organization context..."}</span>
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleCopyLink} disabled={!inviteUrl}>
                         {copied ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                       </Button>
@@ -262,7 +263,7 @@ export default function StaffRosterPage() {
             <CardDescription className="text-xs uppercase font-bold tracking-widest opacity-60">Database of authorized personnel</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
-            {loading ? (
+            {rosterLoading ? (
               <div className="flex justify-center py-20"><Loader2 className="h-10 w-10 text-primary animate-spin" /></div>
             ) : !staff || staff.length === 0 ? (
               <div className="text-center py-20 opacity-20"><Users className="h-16 w-16 mx-auto" /></div>
@@ -325,12 +326,12 @@ export default function StaffRosterPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex justify-between items-end">
-                <span className="text-xs opacity-60 font-bold uppercase">Total Staff</span>
+                <span className="text-xs opacity-60 font-bold uppercase">Total Personnel</span>
                 <span className="text-4xl font-black">{staff?.length || 0}</span>
               </div>
               <div className="h-px bg-white/10" />
               <div className="flex justify-between items-end">
-                <span className="text-xs opacity-60 font-bold uppercase">Departments</span>
+                <span className="text-xs opacity-60 font-bold uppercase">Active Departments</span>
                 <span className="text-4xl font-black">{new Set(staff?.map(s => s.department)).size}</span>
               </div>
             </CardContent>
@@ -341,7 +342,7 @@ export default function StaffRosterPage() {
       <Dialog open={!!editingStaff} onOpenChange={(open) => !open && setEditingStaff(null)}>
         <DialogContent className="sm:max-w-md rounded-3xl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-headline font-bold">Edit Profile</DialogTitle>
+            <DialogTitle className="text-2xl font-headline font-bold">Edit Personnel Profile</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleUpdateStaff} className="space-y-4 py-4">
             <div className="space-y-1">
