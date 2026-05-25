@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Activity, Loader2, UserPlus, ShieldAlert, Eye, EyeOff, Building2, Clock } from "lucide-react";
+import { Activity, Loader2, UserPlus, ShieldAlert, Eye, EyeOff, Building2, LogIn } from "lucide-react";
 import { Organization } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -68,10 +68,18 @@ export default function JoinOrganizationPage() {
         shiftEnd,
         createdAt: serverTimestamp(),
       });
-      toast({ title: "Registration Successful", description: `Welcome to the ${organization.name} team.` });
+      toast({ title: "Registration Successful", description: `Welcome to ${organization.name}.` });
       router.push("/dashboard/staff");
     } catch (error: any) {
-      toast({ title: "Registration Failed", description: error.message, variant: "destructive" });
+      if (error.code === 'auth/email-already-in-use') {
+        toast({ 
+          title: "Account Already Exists", 
+          description: "This email is already registered. Please login instead, and your profile will be automatically re-synchronized if needed.",
+          variant: "destructive"
+        });
+      } else {
+        toast({ title: "Registration Failed", description: error.message, variant: "destructive" });
+      }
     } finally {
       setLoading(false);
     }
@@ -81,7 +89,7 @@ export default function JoinOrganizationPage() {
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
         <Loader2 className="h-12 w-12 text-primary animate-spin" />
-        <p className="text-[10px] font-black text-primary animate-pulse uppercase tracking-[0.3em]">Validating Organization...</p>
+        <p className="text-[10px] font-black text-primary animate-pulse uppercase tracking-[0.3em]">Validating Link...</p>
       </div>
     </div>
   );
@@ -91,7 +99,7 @@ export default function JoinOrganizationPage() {
       <Card className="w-full max-w-md text-center p-12 shadow-2xl rounded-[2.5rem] border-none">
         <ShieldAlert className="h-20 w-20 text-destructive mx-auto mb-8 opacity-20" />
         <CardTitle className="text-3xl font-headline font-black mb-4">Invalid Link</CardTitle>
-        <CardDescription className="text-sm font-medium mb-10">This invite link is invalid. Please request a new QR code from your administrator.</CardDescription>
+        <CardDescription className="text-sm font-medium mb-10">This invite link is invalid or expired.</CardDescription>
         <Link href="/"><Button className="w-full h-14 rounded-2xl font-bold">Return Home</Button></Link>
       </Card>
     </div>
@@ -117,11 +125,11 @@ export default function JoinOrganizationPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Full Name</Label>
-                <Input placeholder="Personnel Full Name" value={fullName} onChange={e => setFullName(e.target.value)} required className="h-14 rounded-2xl" />
+                <Input placeholder="Your Name" value={fullName} onChange={e => setFullName(e.target.value)} required className="h-14 rounded-2xl" />
               </div>
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Department</Label>
-                <Input placeholder="e.g., Sales, Operations" value={department} onChange={e => setDepartment(e.target.value)} required className="h-14 rounded-2xl" />
+                <Input placeholder="e.g., Ops" value={department} onChange={e => setDepartment(e.target.value)} required className="h-14 rounded-2xl" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-6 p-6 bg-primary/5 rounded-[2rem] border border-primary/10">
@@ -141,9 +149,14 @@ export default function JoinOrganizationPage() {
             <div className="space-y-2">
               <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Password</Label>
               <div className="relative">
-                <Input type={showPassword ? "text" : "password"} placeholder="Min. 8 chars" value={password} onChange={e => setPassword(e.target.value)} required className="h-14 rounded-2xl pr-12" />
+                <Input type={showPassword ? "text" : "password"} placeholder="Min. 8 characters" value={password} onChange={e => setPassword(e.target.value)} required className="h-14 rounded-2xl pr-12" />
                 <Button type="button" variant="ghost" className="absolute right-0 top-0 h-full px-4" onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</Button>
               </div>
+            </div>
+            <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-200 dark:border-amber-900/30">
+              <p className="text-[10px] text-amber-800 dark:text-amber-200 leading-tight">
+                If you already have an account from a previous position, please log in directly. Your profile will be updated for this organization.
+              </p>
             </div>
             <Button className="w-full h-16 text-xl font-black rounded-3xl shadow-2xl mt-4" type="submit" disabled={loading}>
               {loading ? <Loader2 className="animate-spin h-6 w-6" /> : <><UserPlus className="mr-2 h-6 w-6" /> Join Workforce</>}
@@ -151,7 +164,10 @@ export default function JoinOrganizationPage() {
           </form>
         </CardContent>
         <CardFooter className="flex flex-col gap-6 text-center p-12 pt-0">
-          <Link href="/login" className="text-sm text-primary font-bold hover:underline">Existing Staff Login</Link>
+          <Link href="/login" className="flex items-center gap-2 text-primary font-bold hover:underline">
+            <LogIn className="h-4 w-4" />
+            Existing Account Login
+          </Link>
         </CardFooter>
       </Card>
     </div>

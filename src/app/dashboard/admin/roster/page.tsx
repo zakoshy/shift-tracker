@@ -3,10 +3,10 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
-import { useFirestore, useAuth, useCollection, useFirebaseApp } from "@/firebase";
+import { useFirestore, useAuth, useCollection } from "@/firebase";
 import { collection, query, where, doc, deleteDoc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { createUserWithEmailAndPassword, getAuth, signOut } from "firebase/auth";
-import { initializeApp, getApp, getApps } from "firebase/app";
+import { initializeApp } from "firebase/app";
 import { firebaseConfig } from "@/firebase/config";
 import { 
   Card, 
@@ -40,26 +40,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Users, 
   UserPlus, 
-  QrCode, 
   Trash2, 
   Copy,
   CheckCircle2,
   Loader2,
   Edit2,
-  UserCheck,
-  AlertTriangle,
   Clock,
-  ShieldCheck,
-  Info
+  Info,
+  ShieldAlert
 } from "lucide-react";
 import { UserProfile } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { QRCodeSVG } from "qrcode.react";
 
 export default function StaffRosterPage() {
-  const { profile, organization, loading: authLoading } = usePulseLogAuth();
+  const { profile, organization } = usePulseLogAuth();
   const db = useFirestore();
-  const mainAuth = useAuth();
   const { toast } = useToast();
   
   const [copied, setCopied] = useState(false);
@@ -85,9 +81,8 @@ export default function StaffRosterPage() {
   const { data: staff, loading: rosterLoading } = useCollection<UserProfile>(staffQuery);
 
   const inviteUrl = useMemo(() => {
-    if (typeof window === 'undefined' || !profile?.organizationId || profile.organizationId === "undefined") return "";
-    const origin = window.location.origin;
-    return `${origin}/join/${profile.organizationId}`;
+    if (typeof window === 'undefined' || !profile?.organizationId) return "";
+    return `${window.location.origin}/join/${profile.organizationId}`;
   }, [profile?.organizationId]);
 
   const handleCopyLink = () => {
@@ -99,7 +94,11 @@ export default function StaffRosterPage() {
   };
 
   const handleDeleteStaff = async (userId: string, name: string) => {
-    const confirmDelete = window.confirm(`SECURITY ALERT: This will remove ${name} from the Operational Roster. Note: Their Login Account remains in the Auth System for security. To fully purge, manage via Firebase Console.`);
+    const confirmDelete = window.confirm(
+      `SECURITY ALERT: You are removing ${name} from the roster.\n\n` +
+      `Note: Their login account will NOT be deleted from the system (for security and audit reasons). ` +
+      `If you need to re-add them later, use the invite link or ensure their email is cleared in the Auth console.`
+    );
     if (!confirmDelete) return;
 
     try {
@@ -121,7 +120,7 @@ export default function StaffRosterPage() {
         shiftStart: editingStaff.shiftStart || "08:00",
         shiftEnd: editingStaff.shiftEnd || "17:00",
       });
-      toast({ title: "Profile Secured", description: "Personnel shift and department data updated." });
+      toast({ title: "Profile Secured", description: "Personnel data updated." });
       setEditingStaff(null);
     } catch (err) {
       toast({ title: "Update Failed", description: "Data synchronization failure.", variant: "destructive" });
@@ -135,6 +134,7 @@ export default function StaffRosterPage() {
     if (!profile?.organizationId || isCreating) return;
     setIsCreating(true);
 
+    // Use a secondary app instance to create the user so the admin isn't logged out
     const secondaryAppName = `secondary-${Date.now()}`;
     const secondaryApp = initializeApp(firebaseConfig as any, secondaryAppName);
     const secondaryAuth = getAuth(secondaryApp);
@@ -157,14 +157,14 @@ export default function StaffRosterPage() {
       
       await signOut(secondaryAuth);
       
-      toast({ title: "Personnel Added", description: `${manualName} has been registered and verified.` });
+      toast({ title: "Personnel Added", description: `${manualName} has been registered.` });
       setManualName(""); setManualEmail(""); setManualPassword(""); setManualDept("");
     } catch (error: any) {
       let message = error.message;
       if (error.code === 'auth/email-already-in-use') {
-        message = "This email is already registered in the login system. If you previously deleted this person, you must delete their account in the Firebase Auth console first.";
+        message = "This email already has an active login account. To re-add this person, please use the Invite Link and have them log in with their existing credentials.";
       }
-      toast({ title: "Registration Protocol Halted", description: message, variant: "destructive" });
+      toast({ title: "Registration Halted", description: message, variant: "destructive" });
     } finally {
       setIsCreating(false);
     }
@@ -186,8 +186,8 @@ export default function StaffRosterPage() {
           </DialogTrigger>
           <DialogContent className="sm:max-w-2xl rounded-3xl">
             <DialogHeader>
-              <DialogTitle className="text-2xl font-headline font-bold">Personnel Onboarding Protocol</DialogTitle>
-              <DialogDescription>Add new personnel via secure invitation link or manual administrative entry.</DialogDescription>
+              <DialogTitle className="text-2xl font-headline font-bold">Personnel Onboarding</DialogTitle>
+              <DialogDescription>Add new personnel via secure link or manual entry.</DialogDescription>
             </DialogHeader>
             <Tabs defaultValue="qr" className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6 bg-muted/50 p-1 rounded-xl">
@@ -202,14 +202,14 @@ export default function StaffRosterPage() {
                     ) : (
                       <div className="flex flex-col items-center gap-2">
                         <Loader2 className="h-10 w-10 text-primary animate-spin" />
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Generating Token...</span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Generating...</span>
                       </div>
                     )}
                   </div>
                   <div className="w-full space-y-2 text-center">
                     <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Registration URL</p>
                     <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl border font-mono text-xs break-all">
-                      <span className="flex-1 opacity-60">{inviteUrl || "Waiting for organization context..."}</span>
+                      <span className="flex-1 opacity-60">{inviteUrl || "Waiting for context..."}</span>
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleCopyLink} disabled={!inviteUrl}>
                         {copied ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                       </Button>
@@ -221,35 +221,37 @@ export default function StaffRosterPage() {
                 <form onSubmit={handleManualCreate} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <Label htmlFor="mName" className="text-[10px] uppercase font-bold tracking-widest">Full Name</Label>
-                      <Input id="mName" value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Name" required className="rounded-xl h-11" />
+                      <Label className="text-[10px] uppercase font-bold tracking-widest">Full Name</Label>
+                      <Input value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Name" required className="rounded-xl h-11" />
                     </div>
                     <div className="space-y-1">
-                      <Label htmlFor="mDept" className="text-[10px] uppercase font-bold tracking-widest">Department</Label>
-                      <Input id="mDept" value={manualDept} onChange={e => setManualDept(e.target.value)} placeholder="e.g., Sales, Ops" required className="rounded-xl h-11" />
+                      <Label className="text-[10px] uppercase font-bold tracking-widest">Department</Label>
+                      <Input value={manualDept} onChange={e => setManualDept(e.target.value)} placeholder="e.g., Ops" required className="rounded-xl h-11" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <Label htmlFor="mShiftS" className="text-[10px] uppercase font-bold tracking-widest">Shift Start</Label>
-                      <Input id="mShiftS" type="time" value={manualShiftStart} onChange={e => setManualShiftStart(e.target.value)} required className="rounded-xl h-11" />
+                      <Label className="text-[10px] uppercase font-bold tracking-widest">Shift Start</Label>
+                      <Input type="time" value={manualShiftStart} onChange={e => setManualShiftStart(e.target.value)} required className="rounded-xl h-11" />
                     </div>
                     <div className="space-y-1">
-                      <Label htmlFor="mShiftE" className="text-[10px] uppercase font-bold tracking-widest">Shift End</Label>
-                      <Input id="mShiftE" type="time" value={manualShiftEnd} onChange={e => setManualShiftEnd(e.target.value)} required className="rounded-xl h-11" />
+                      <Label className="text-[10px] uppercase font-bold tracking-widest">Shift End</Label>
+                      <Input type="time" value={manualShiftEnd} onChange={e => setManualShiftEnd(e.target.value)} required className="rounded-xl h-11" />
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="mEmail" className="text-[10px] uppercase font-bold tracking-widest">Work Email</Label>
-                    <Input id="mEmail" type="email" value={manualEmail} onChange={e => setManualEmail(e.target.value)} placeholder="email@org.com" required className="rounded-xl h-11" />
+                    <Label className="text-[10px] uppercase font-bold tracking-widest">Work Email</Label>
+                    <Input type="email" value={manualEmail} onChange={e => setManualEmail(e.target.value)} placeholder="email@org.com" required className="rounded-xl h-11" />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="mPass" className="text-[10px] uppercase font-bold tracking-widest">Password</Label>
-                    <Input id="mPass" type="password" value={manualPassword} onChange={e => setManualPassword(e.target.value)} placeholder="••••••••" required className="rounded-xl h-11" />
+                    <Label className="text-[10px] uppercase font-bold tracking-widest">Initial Password</Label>
+                    <Input type="password" value={manualPassword} onChange={e => setManualPassword(e.target.value)} placeholder="••••••••" required className="rounded-xl h-11" />
                   </div>
-                  <div className="bg-amber-50 dark:bg-amber-900/10 p-3 rounded-xl border border-amber-200 dark:border-amber-900/30 flex items-start gap-3">
+                  <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-200 dark:border-amber-900/30 flex items-start gap-3">
                     <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                    <p className="text-[10px] text-amber-800 dark:text-amber-200 leading-tight">If an email was previously used, ensure the Auth account is deleted in the Firebase Console before re-registering.</p>
+                    <p className="text-[10px] text-amber-800 dark:text-amber-200 leading-tight">
+                      Note: If this email was previously used, they already have an account. Use the invite link to re-add them to the roster.
+                    </p>
                   </div>
                   <Button className="w-full h-12 rounded-xl mt-2" type="submit" disabled={isCreating}>
                     {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Register Profile"}
@@ -280,8 +282,8 @@ export default function StaffRosterPage() {
                 <TableHeader className="bg-muted/30">
                   <TableRow>
                     <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Name</TableHead>
-                    <TableHead className="text-[10px] font-bold uppercase tracking-widest">Shift Timing</TableHead>
-                    <TableHead className="text-[10px] font-bold uppercase tracking-widest">Department</TableHead>
+                    <TableHead className="text-[10px] font-bold uppercase tracking-widest">Shift</TableHead>
+                    <TableHead className="text-[10px] font-bold uppercase tracking-widest">Dept</TableHead>
                     <TableHead className="text-right pr-6">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -301,7 +303,6 @@ export default function StaffRosterPage() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="rounded-lg text-[9px] font-mono border-muted">
-                          <Clock className="h-3 w-3 mr-1 opacity-40" />
                           {member.shiftStart} - {member.shiftEnd}
                         </Badge>
                       </TableCell>
@@ -333,17 +334,23 @@ export default function StaffRosterPage() {
         <div className="space-y-6">
           <Card className="bg-[#002B5B] text-white border-none shadow-xl rounded-[2rem]">
             <CardHeader>
-              <CardTitle className="text-sm font-bold uppercase tracking-[0.2em] opacity-60">Workforce Stats</CardTitle>
+              <CardTitle className="text-sm font-bold uppercase tracking-[0.2em] opacity-60">System Health</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex justify-between items-end">
-                <span className="text-xs opacity-60 font-bold uppercase">Total Personnel</span>
-                <span className="text-4xl font-black">{staff?.length || 0}</span>
+              <div className="flex items-center gap-4">
+                <div className="h-10 w-10 rounded-full bg-white/10 flex items-center justify-center">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase opacity-60">Active Roster</p>
+                  <p className="text-2xl font-black">{staff?.length || 0}</p>
+                </div>
               </div>
-              <div className="h-px bg-white/10" />
-              <div className="flex justify-between items-end">
-                <span className="text-xs opacity-60 font-bold uppercase">Active Departments</span>
-                <span className="text-4xl font-black">{new Set(staff?.map(s => s.department)).size}</span>
+              <div className="p-4 bg-white/5 rounded-2xl border border-white/10 flex items-start gap-3">
+                <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-[9px] leading-tight opacity-70">
+                  Deleting a profile removes roster access but keeps login records intact for security audits.
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -353,7 +360,7 @@ export default function StaffRosterPage() {
       <Dialog open={!!editingStaff} onOpenChange={(open) => !open && setEditingStaff(null)}>
         <DialogContent className="sm:max-w-md rounded-3xl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-headline font-bold">Edit Personnel Profile</DialogTitle>
+            <DialogTitle className="text-2xl font-headline font-bold">Edit Profile</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleUpdateStaff} className="space-y-4 py-4">
             <div className="space-y-1">
