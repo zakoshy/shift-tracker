@@ -30,9 +30,13 @@ service cloud.firestore {
     // User Profiles: Super admins can do everything. Users can read/write their own.
     match /users/{userId} {
       allow create: if request.auth != null;
-      allow read: if request.auth != null && (isSuperAdmin() || request.auth.uid == userId || isAdmin(resource.data.organizationId));
-      allow update: if request.auth != null && (isSuperAdmin() || request.auth.uid == userId || isAdmin(resource.data.organizationId));
-      allow delete: if isSuperAdmin() || isAdmin(resource.data.organizationId);
+      allow read: if request.auth != null && (
+        isSuperAdmin() || 
+        request.auth.uid == userId || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && isAdmin(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId))
+      );
+      allow update: if request.auth != null && (isSuperAdmin() || request.auth.uid == userId);
+      allow delete: if isSuperAdmin() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && isAdmin(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId));
     }
 
     // Attendance Logs: Staff can create/read/update their own if not suspended. Admins can read theirs.
@@ -41,10 +45,10 @@ service cloud.firestore {
       allow read: if request.auth != null && (
         isSuperAdmin() ||
         resource.data.userId == request.auth.uid || 
-        isAdmin(resource.data.organizationId)
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && isAdmin(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId))
       );
       allow update: if request.auth != null && resource.data.userId == request.auth.uid && isNotSuspended(resource.data.organizationId);
-      allow delete: if isSuperAdmin() || isAdmin(resource.data.organizationId);
+      allow delete: if isSuperAdmin() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && isAdmin(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId));
     }
   }
 }
