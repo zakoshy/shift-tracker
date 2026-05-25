@@ -36,12 +36,14 @@ export default function LoginPage() {
       const profileDoc = await getDoc(doc(db, "users", user.uid));
       if (profileDoc.exists()) {
         const data = profileDoc.data();
+        
+        // Super Admin gets priority redirect
         if (data.role === 'super-admin') {
           router.push("/dashboard/super-admin");
           return;
         }
         
-        // Check for suspension
+        // Check for organization suspension for non-super-admins
         if (data.organizationId) {
           const orgDoc = await getDoc(doc(db, "organizations", data.organizationId));
           if (orgDoc.exists() && orgDoc.data().suspended) {
@@ -61,6 +63,7 @@ export default function LoginPage() {
           router.push("/dashboard/staff");
         }
       } else {
+        // No profile found, push to home to handle possible auto-sync
         router.push("/");
       }
     } catch (error: any) {

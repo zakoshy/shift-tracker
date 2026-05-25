@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -24,7 +25,9 @@ export default function Home() {
 
   useEffect(() => {
     if (!loading && user && profile) {
-      if (profile.role === 'admin') {
+      if (profile.role === 'super-admin') {
+        router.push('/dashboard/super-admin');
+      } else if (profile.role === 'admin') {
         router.push('/dashboard/admin');
       } else {
         router.push('/dashboard/staff');
