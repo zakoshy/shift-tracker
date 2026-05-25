@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -28,7 +29,7 @@ export default function SignupPage() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth || !db) return;
+    if (!auth || !db || loading) return;
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -40,6 +41,7 @@ export default function SignupPage() {
         id: orgId,
         name: orgName,
         createdAt: serverTimestamp(),
+        overtimeEnabled: false, // Default to disabled for new orgs
       });
 
       await setDoc(doc(db, "users", user.uid), {
@@ -77,18 +79,18 @@ export default function SignupPage() {
             <Activity className="h-12 w-12 text-primary" strokeWidth={2.5} />
           </div>
           <CardTitle className="text-2xl font-headline font-bold">Establish Organization</CardTitle>
-          <CardDescription>Launch PulseLog for your healthcare facility</CardDescription>
+          <CardDescription>Launch PulseLog for your workforce facility</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSignup} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="orgName">Facility Name</Label>
+                <Label htmlFor="orgName">Organization Name</Label>
                 <div className="relative">
                   <Hospital className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input 
                     id="orgName" 
-                    placeholder="General Hospital" 
+                    placeholder="Acme Corp" 
                     className="pl-10"
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
@@ -100,7 +102,7 @@ export default function SignupPage() {
                 <Label htmlFor="fullName">Admin Full Name</Label>
                 <Input 
                   id="fullName" 
-                  placeholder="Dr. Jane Smith" 
+                  placeholder="John Doe" 
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   required 
@@ -112,7 +114,7 @@ export default function SignupPage() {
               <Input 
                 id="email" 
                 type="email" 
-                placeholder="admin@hospital.com" 
+                placeholder="admin@org.com" 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required 

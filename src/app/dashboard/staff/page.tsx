@@ -29,7 +29,6 @@ import {
   LocateFixed,
   ShieldX,
   Briefcase,
-  Info,
   BrainCircuit,
   Heart
 } from "lucide-react";
@@ -114,13 +113,28 @@ export default function StaffPage() {
   };
 
   const handleClockIn = async () => {
-    if (!profile || !db || locationStatus !== 'verified') {
-      toast({ title: "Security Alert", description: "GPS verification required.", variant: "destructive" });
+    if (!profile || !db || locationStatus !== 'verified' || loading) {
+      toast({ title: "Security Alert", description: "GPS verification and authentication required.", variant: "destructive" });
       return;
     }
+
+    // Idempotency: verify if already clocked in
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const q = query(
+      collection(db, "attendance_logs"),
+      where("userId", "==", profile.uid),
+      where("date", "==", today),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      toast({ title: "Idempotency Warning", description: "Shift already initialized for today." });
+      setAttendance({ id: snap.docs[0].id, ...snap.docs[0].data() } as AttendanceLog);
+      return;
+    }
+
     setLoading(true);
     const now = new Date();
-    const todayStr = format(now, 'yyyy-MM-dd');
     const timeStr = format(now, 'HH:mm:ss');
     
     const startTimeStr = profile.shiftStart || "08:00";
@@ -134,7 +148,7 @@ export default function StaffPage() {
       userName: profile.name,
       userDepartment: profile.department,
       organizationId: profile.organizationId,
-      date: todayStr,
+      date: today,
       clockInTime: timeStr,
       clockOutTime: null,
       status: status,
@@ -149,14 +163,14 @@ export default function StaffPage() {
       setAttendance(newLog as AttendanceLog);
       toast({ title: status === 'late' ? "Arrival Noted (Late)" : "Clocked In", description: `Arrival verified at ${format(now, 'hh:mm a')}` });
     } catch (err) {
-      toast({ title: "Error", description: "Log failed.", variant: "destructive" });
+      toast({ title: "Error", description: "Log synchronization failed.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
   const handleClockOut = async () => {
-    if (!attendance || !profile || !db) return;
+    if (!attendance || !profile || !db || loading) return;
     setLoading(true);
     const now = new Date();
     const timeStr = format(now, 'HH:mm:ss');
@@ -167,11 +181,20 @@ export default function StaffPage() {
     let overtime = 0;
     let status = attendance.status;
 
-    if (now > shiftEnd) {
-      overtime = differenceInMinutes(now, shiftEnd);
-      status = 'overtime';
-    } else if (differenceInMinutes(shiftEnd, now) > 5) {
-      status = 'early-departure';
+    if (organization?.overtimeEnabled) {
+      if (now > shiftEnd) {
+        overtime = differenceInMinutes(now, shiftEnd);
+        status = 'overtime';
+      } else if (differenceInMinutes(shiftEnd, now) > 5) {
+        status = 'early-departure';
+      }
+    } else {
+      // If overtime is disabled, we just mark as present/completed
+      if (differenceInMinutes(shiftEnd, now) > 5) {
+        status = 'early-departure';
+      } else {
+        status = 'present';
+      }
     }
 
     try {
@@ -180,7 +203,7 @@ export default function StaffPage() {
         status: status,
         moodRating: mood,
         handoverNotes: notes,
-        overtimeMinutes: overtime
+        overtimeMinutes: organization?.overtimeEnabled ? overtime : 0
       }, { merge: true });
       setAttendance(prev => prev ? { ...prev, clockOutTime: timeStr, moodRating: mood, handoverNotes: notes, status, overtimeMinutes: overtime } : null);
       setClockOutOpen(false);
@@ -265,7 +288,7 @@ export default function StaffPage() {
                 </div>
                 <div>
                   <h3 className="text-3xl font-headline font-black text-foreground">Shift Completed</h3>
-                  {attendance.overtimeMinutes ? (
+                  {organization?.overtimeEnabled && attendance.overtimeMinutes ? (
                     <Badge className="mt-2 bg-green-600">Reward Points: +{attendance.overtimeMinutes} OT</Badge>
                   ) : null}
                 </div>

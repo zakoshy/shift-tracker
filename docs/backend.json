@@ -11,7 +11,8 @@
         "createdAt": { "type": "string", "format": "date-time" },
         "latitude": { "type": "number" },
         "longitude": { "type": "number" },
-        "radiusInMeters": { "type": "number" }
+        "radiusInMeters": { "type": "number" },
+        "overtimeEnabled": { "type": "boolean", "default": false }
       },
       "required": ["id", "name"]
     },

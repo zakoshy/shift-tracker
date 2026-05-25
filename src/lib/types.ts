@@ -12,6 +12,7 @@ export interface Organization {
   latitude?: number;
   longitude?: number;
   radiusInMeters?: number;
+  overtimeEnabled: boolean;
 }
 
 export interface UserProfile {

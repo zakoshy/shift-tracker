@@ -14,14 +14,14 @@ import {
   deleteDoc, 
   getDocs, 
   writeBatch,
-  setDoc,
-  serverTimestamp 
+  setDoc
 } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Users, 
@@ -41,7 +41,8 @@ import {
   Trash2,
   Database,
   UserCheck,
-  BookOpen
+  BookOpen,
+  Zap
 } from "lucide-react";
 import { format, subDays, parse } from "date-fns";
 import { AttendanceLog, UserProfile } from "@/lib/types";
@@ -68,6 +69,7 @@ export default function AdminDashboard() {
   const [summarizing, setSummarizing] = useState(false);
   const [settingLocation, setSettingLocation] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
+  const [updatingConfig, setUpdatingConfig] = useState(false);
   const { toast } = useToast();
 
   // Manual Attendance State (Inclusion Protocol)
@@ -113,16 +115,27 @@ export default function AdminDashboard() {
   };
 
   const handleManualAttendance = async () => {
-    if (!selectedStaffId || !db || !profile?.organizationId) return;
+    if (!selectedStaffId || !db || !profile?.organizationId || isLoggingManual) return;
     setIsLoggingManual(true);
     const staffMember = allStaff?.find(s => s.uid === selectedStaffId);
-    if (!staffMember) return;
+    if (!staffMember) {
+      setIsLoggingManual(false);
+      return;
+    }
 
     const today = format(new Date(), 'yyyy-MM-dd');
     const timeStr = `${manualTime}:00`;
 
     try {
       if (manualType === "in") {
+        // Idempotency check: prevent duplicate clock-in for same day
+        const existingIn = logs.find(l => l.userId === selectedStaffId);
+        if (existingIn) {
+          toast({ title: "Protocol Violation", description: "Personnel is already logged in for today.", variant: "destructive" });
+          setIsLoggingManual(false);
+          return;
+        }
+
         const startThreshold = parse(staffMember.shiftStart || "08:00", 'HH:mm', new Date());
         const actualIn = parse(manualTime, 'HH:mm', new Date());
         const status = actualIn > startThreshold ? 'late' : 'on-time';
@@ -146,6 +159,7 @@ export default function AdminDashboard() {
         const existingLog = logs.find(l => l.userId === selectedStaffId && !l.clockOutTime);
         if (!existingLog) {
           toast({ title: "No Active Session", description: "Staff is not currently clocked in.", variant: "destructive" });
+          setIsLoggingManual(false);
           return;
         }
         await updateDoc(doc(db, "attendance_logs", existingLog.id), {
@@ -163,11 +177,30 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleToggleOvertime = async (enabled: boolean) => {
+    if (!organization?.id || !db || updatingConfig) return;
+    setUpdatingConfig(true);
+    try {
+      await updateDoc(doc(db, "organizations", organization.id), {
+        overtimeEnabled: enabled
+      });
+      toast({ 
+        title: enabled ? "Overtime Protocol Active" : "Overtime Protocol Disabled", 
+        description: `Rewards engine ${enabled ? 'engaged' : 'halted'}.` 
+      });
+    } catch (err) {
+      toast({ title: "Configuration Error", description: "Failed to update protocol.", variant: "destructive" });
+    } finally {
+      setUpdatingConfig(false);
+    }
+  };
+
   const handleSetPerimeter = () => {
     if (!navigator.geolocation) {
       toast({ title: "Unsupported", description: "Browser geolocation not available.", variant: "destructive" });
       return;
     }
+    if (settingLocation) return;
     setSettingLocation(true);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
@@ -206,7 +239,7 @@ export default function AdminDashboard() {
   };
 
   const handleCleanupOldLogs = async () => {
-    if (!db || !profile?.organizationId) return;
+    if (!db || !profile?.organizationId || cleaningUp) return;
     const confirmCleanup = window.confirm("CAUTION: This will permanently delete records older than 30 days. Proceed?");
     if (!confirmCleanup) return;
 
@@ -235,6 +268,7 @@ export default function AdminDashboard() {
   };
 
   const handleGenAIReport = async () => {
+    if (summarizing) return;
     const notes = logs.filter(l => l.handoverNotes).map(l => `${l.userName}: ${l.handoverNotes}`);
     if (notes.length === 0) {
       toast({ title: "Insufficient Data", description: "No notes available today.", variant: "destructive" });
@@ -267,12 +301,11 @@ export default function AdminDashboard() {
           <p className="text-sm text-muted-foreground mt-1">Institutional workforce monitoring for <span className="font-bold text-primary">{organization?.name}</span></p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* Inclusion Protocol: Digital Ledger Button */}
           <Dialog open={manualOpen} onOpenChange={setManualOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="rounded-xl border-2 bg-primary/5 border-primary/20 hover:bg-primary/10">
                 <BookOpen className="mr-2 h-4 w-4 text-primary" />
-                Digital Ledger (Inclusion)
+                Digital Ledger
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-[90vw] sm:max-w-md rounded-3xl">
@@ -332,9 +365,25 @@ export default function AdminDashboard() {
             <DialogContent className="max-w-[90vw] sm:max-w-md rounded-3xl">
               <DialogHeader>
                 <DialogTitle>System Configuration</DialogTitle>
-                <DialogDescription>Manage geofencing and database maintenance.</DialogDescription>
+                <DialogDescription>Manage operational protocols and maintenance.</DialogDescription>
               </DialogHeader>
               <div className="py-4 space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-muted/30 rounded-2xl border">
+                    <div className="space-y-0.5">
+                      <Label className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                        <Zap className="h-3 w-3 text-amber-500" /> Overtime Rewards
+                      </Label>
+                      <p className="text-[10px] text-muted-foreground">Enable tracking and incentives for overtime.</p>
+                    </div>
+                    <Switch 
+                      checked={organization?.overtimeEnabled} 
+                      onCheckedChange={handleToggleOvertime}
+                      disabled={updatingConfig}
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-3">
                   <h4 className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
                     <MapPin className="h-3 w-3" /> Geofence Parameters
@@ -409,16 +458,18 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-sm bg-card border-l-4 border-l-green-600 rounded-2xl">
-          <CardContent className="p-6">
-            <div className="flex justify-between items-start mb-4">
-              <TrendingUp className="h-5 w-5 text-green-600" />
-              <Badge className="bg-green-600/10 text-green-600 text-[9px] uppercase border-green-600/20">Reward Metrics</Badge>
-            </div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-1">Total Overtime (Mins)</p>
-            <h3 className="text-4xl font-black tracking-tighter text-green-600">{stats.totalOvertime}</h3>
-          </CardContent>
-        </Card>
+        {organization?.overtimeEnabled && (
+          <Card className="border-none shadow-sm bg-card border-l-4 border-l-green-600 rounded-2xl">
+            <CardContent className="p-6">
+              <div className="flex justify-between items-start mb-4">
+                <TrendingUp className="h-5 w-5 text-green-600" />
+                <Badge className="bg-green-600/10 text-green-600 text-[9px] uppercase border-green-600/20">Reward Metrics</Badge>
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-1">Total Overtime (Mins)</p>
+              <h3 className="text-4xl font-black tracking-tighter text-green-600">{stats.totalOvertime}</h3>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="border-none shadow-sm bg-card border-l-4 border-l-primary rounded-2xl">
           <CardContent className="p-6">
@@ -538,7 +589,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     {log.status === 'late' && <Badge variant="destructive" className="text-[8px] h-4 uppercase">Late</Badge>}
-                    {(log.overtimeMinutes || 0) > 0 && (
+                    {organization?.overtimeEnabled && (log.overtimeMinutes || 0) > 0 && (
                       <Badge className="bg-green-600 text-white text-[8px] h-4 uppercase">
                         +{log.overtimeMinutes}m OT
                       </Badge>
