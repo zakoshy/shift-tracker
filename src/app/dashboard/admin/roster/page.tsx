@@ -47,7 +47,8 @@ import {
   Edit2,
   Clock,
   Info,
-  ShieldAlert
+  ShieldAlert,
+  Fingerprint
 } from "lucide-react";
 import { UserProfile } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -134,7 +135,6 @@ export default function StaffRosterPage() {
     if (!profile?.organizationId || isCreating) return;
     setIsCreating(true);
 
-    // Use a secondary app instance to create the user so the admin isn't logged out
     const secondaryAppName = `secondary-${Date.now()}`;
     const secondaryApp = initializeApp(firebaseConfig as any, secondaryAppName);
     const secondaryAuth = getAuth(secondaryApp);
@@ -191,14 +191,20 @@ export default function StaffRosterPage() {
             </DialogHeader>
             <Tabs defaultValue="qr" className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6 bg-muted/50 p-1 rounded-xl">
-                <TabsTrigger value="qr" className="rounded-lg">Secure Invite QR</TabsTrigger>
+                <TabsTrigger value="qr" className="rounded-lg">Information Entry QR</TabsTrigger>
                 <TabsTrigger value="manual" className="rounded-lg">Manual Entry</TabsTrigger>
               </TabsList>
               <TabsContent value="qr" className="space-y-6">
                 <div className="flex flex-col items-center py-6 space-y-6">
-                  <div className="bg-white p-6 rounded-[2rem] border-2 border-primary/10 shadow-xl flex items-center justify-center min-h-[240px]">
+                  <div className="bg-white p-6 rounded-[2rem] border-2 border-primary/10 shadow-xl flex flex-col items-center justify-center min-h-[300px] w-full max-w-sm">
                     {inviteUrl ? (
-                      <QRCodeSVG value={inviteUrl} size={200} level="H" className="text-primary" />
+                      <>
+                        <QRCodeSVG value={inviteUrl} size={220} level="H" className="text-primary mb-6" />
+                        <div className="flex items-center gap-2 text-primary font-bold">
+                          <Fingerprint className="h-4 w-4" />
+                          <span className="text-[10px] uppercase tracking-widest">Secure Enrollment QR</span>
+                        </div>
+                      </>
                     ) : (
                       <div className="flex flex-col items-center gap-2">
                         <Loader2 className="h-10 w-10 text-primary animate-spin" />

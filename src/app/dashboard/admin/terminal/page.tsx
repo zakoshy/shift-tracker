@@ -3,11 +3,13 @@
 
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { Card, CardContent } from "@/components/ui/card";
-import { Activity, ShieldCheck, MapPin, Loader2, Monitor } from "lucide-react";
+import { Activity, ShieldCheck, MapPin, Loader2, Monitor, ShieldAlert } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { format } from "date-fns";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export default function TerminalPage() {
   const { organization, loading } = usePulseLogAuth();
@@ -22,10 +24,27 @@ export default function TerminalPage() {
     ? `${window.location.origin}/dashboard/staff` 
     : "";
 
+  const hasLocation = !!(organization?.latitude && organization?.longitude);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0A0A0B] flex items-center justify-center">
         <Loader2 className="h-12 w-12 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (!hasLocation) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0B] text-white flex flex-col items-center justify-center p-8 text-center">
+        <ShieldAlert className="h-20 w-20 text-destructive mb-6" />
+        <h2 className="text-4xl font-black tracking-tighter mb-4">Terminal Access Denied</h2>
+        <p className="text-muted-foreground max-w-md mb-8">
+          The Operational Perimeter has not been established. GPS anti-fraud protocols require facility coordinates to generate a valid sync token.
+        </p>
+        <Link href="/dashboard/admin">
+          <Button size="lg" className="rounded-2xl h-14 px-8 font-bold">Return to Command Center</Button>
+        </Link>
       </div>
     );
   }
@@ -92,7 +111,7 @@ export default function TerminalPage() {
       </div>
 
       <div className="absolute bottom-6 md:bottom-12 flex flex-wrap justify-center items-center gap-4 md:gap-8 opacity-40 grayscale px-4">
-        <span className="text-[8px] md:text-xs font-bold tracking-[0.2em] uppercase">HIPAA Compliant</span>
+        <span className="text-[8px] md:text-xs font-bold tracking-[0.2em] uppercase">Security Verified</span>
         <span className="text-[8px] md:text-xs font-bold tracking-[0.2em] uppercase">Encrypted Logs</span>
         <span className="text-[8px] md:text-xs font-bold tracking-[0.2em] uppercase">GPS Fenced</span>
       </div>

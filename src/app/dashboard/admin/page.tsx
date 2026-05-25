@@ -42,7 +42,8 @@ import {
   Database,
   UserCheck,
   BookOpen,
-  Zap
+  Zap,
+  ShieldAlert
 } from "lucide-react";
 import { format, subDays, parse } from "date-fns";
 import { AttendanceLog, UserProfile } from "@/lib/types";
@@ -114,6 +115,8 @@ export default function AdminDashboard() {
       : "N/A"
   };
 
+  const hasLocation = !!(organization?.latitude && organization?.longitude);
+
   const handleManualAttendance = async () => {
     if (!selectedStaffId || !db || !profile?.organizationId || isLoggingManual) return;
     setIsLoggingManual(true);
@@ -128,7 +131,6 @@ export default function AdminDashboard() {
 
     try {
       if (manualType === "in") {
-        // Idempotency check: prevent duplicate clock-in for same day
         const existingIn = logs.find(l => l.userId === selectedStaffId);
         if (existingIn) {
           toast({ title: "Protocol Violation", description: "Personnel is already logged in for today.", variant: "destructive" });
@@ -369,7 +371,7 @@ export default function AdminDashboard() {
               </DialogHeader>
               <div className="py-4 space-y-6">
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-muted/30 rounded-2xl border">
+                  <div className="flex items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/20">
                     <div className="space-y-0.5">
                       <Label className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
                         <Zap className="h-3 w-3 text-amber-500" /> Overtime Rewards
@@ -377,9 +379,10 @@ export default function AdminDashboard() {
                       <p className="text-[10px] text-muted-foreground">Enable tracking and incentives for overtime.</p>
                     </div>
                     <Switch 
-                      checked={organization?.overtimeEnabled} 
+                      checked={!!organization?.overtimeEnabled} 
                       onCheckedChange={handleToggleOvertime}
                       disabled={updatingConfig}
+                      className="data-[state=checked]:bg-primary"
                     />
                   </div>
                 </div>
@@ -388,10 +391,16 @@ export default function AdminDashboard() {
                   <h4 className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
                     <MapPin className="h-3 w-3" /> Geofence Parameters
                   </h4>
-                  <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-2xl border">
+                  <div className={cn(
+                    "flex items-center gap-4 p-4 rounded-2xl border",
+                    hasLocation ? "bg-muted/50 border-border" : "bg-destructive/5 border-destructive/20"
+                  )}>
+                    {!hasLocation && <ShieldAlert className="h-5 w-5 text-destructive shrink-0" />}
                     <div>
                       <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Locked Center</p>
-                      <p className="text-sm font-mono">{organization?.latitude ? `${organization.latitude.toFixed(4)}, ${organization.longitude?.toFixed(4)}` : "Pending"}</p>
+                      <p className={cn("text-sm font-mono", !hasLocation && "text-destructive font-bold")}>
+                        {hasLocation ? `${organization?.latitude?.toFixed(4)}, ${organization?.longitude?.toFixed(4)}` : "REQUIRED: Set Location"}
+                      </p>
                     </div>
                   </div>
                   <Button onClick={handleSetPerimeter} disabled={settingLocation} variant="outline" className="w-full h-10 rounded-xl">
@@ -422,8 +431,13 @@ export default function AdminDashboard() {
             </DialogContent>
           </Dialog>
 
-          <Link href={`/dashboard/admin/terminal`} target="_blank">
-            <Button variant="outline" size="sm" className="rounded-xl border-2">
+          <Link href={hasLocation ? `/dashboard/admin/terminal` : "#"} onClick={(e) => {
+            if (!hasLocation) {
+              e.preventDefault();
+              toast({ title: "Terminal Locked", description: "You must set the site coordinates in Config first.", variant: "destructive" });
+            }
+          }}>
+            <Button variant="outline" size="sm" className={cn("rounded-xl border-2", !hasLocation && "opacity-50 grayscale")}>
               <Monitor className="mr-2 h-4 w-4" />
               Terminal
             </Button>
