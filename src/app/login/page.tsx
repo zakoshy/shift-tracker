@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Activity, Loader2, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { Activity, Loader2, ArrowLeft, Eye, EyeOff, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 
@@ -37,7 +37,7 @@ export default function LoginPage() {
       if (profileDoc.exists()) {
         const data = profileDoc.data();
         
-        // Super Admin gets priority redirect
+        // Super Admin gets absolute priority redirect
         if (data.role === 'super-admin') {
           router.push("/dashboard/super-admin");
           return;
@@ -63,8 +63,14 @@ export default function LoginPage() {
           router.push("/dashboard/staff");
         }
       } else {
-        // No profile found, push to home to handle possible auto-sync
-        router.push("/");
+        // No profile found - THIS IS CRITICAL
+        toast({
+          title: "Profile Not Found",
+          description: "Your login is valid, but no PulseLog profile exists for this UID. Please ensure your Firestore document ID matches your Auth UID.",
+          variant: "destructive",
+        });
+        // We stay on login page so user can see the error
+        setLoading(false);
       }
     } catch (error: any) {
       toast({
@@ -72,7 +78,6 @@ export default function LoginPage() {
         description: error.message,
         variant: "destructive",
       });
-    } finally {
       setLoading(false);
     }
   };
