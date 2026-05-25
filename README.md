@@ -6,6 +6,7 @@ PulseLog is a professional workforce operations platform designed to automate at
 ## Core Features
 
 - **General Purpose Architecture**: Optimized for any organization (retail, logistics, clinical, office).
+- **Inclusion Protocol (Smartphone Optional)**: While optimized for BYOD QR clock-in, supervisors can manually override logs for staff without smartphones, ensuring 100% workforce digital inclusion.
 - **BYOD Clock-In Protocol**: Staff scan institutional QR codes on their own devices.
 - **Geofencing**: GPS-verified check-ins ensure personnel are physically on-site.
 - **AI Operational Synthesis**: Powered by Genkit and Gemini, the system automatically processes shift notes to identify critical themes and issues.

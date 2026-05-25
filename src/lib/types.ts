@@ -40,6 +40,7 @@ export interface AttendanceLog {
   moodRating: MoodRating | null;
   overtimeMinutes?: number;
   verifiedAt?: string;
+  manualOverride?: boolean;
   verifiedLocation?: {
     lat: number;
     lng: number;

@@ -1,13 +1,28 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
-import { useFirestore } from "@/firebase";
-import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs, writeBatch } from "firebase/firestore";
+import { useFirestore, useCollection } from "@/firebase";
+import { 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  doc, 
+  updateDoc, 
+  deleteDoc, 
+  getDocs, 
+  writeBatch,
+  setDoc,
+  serverTimestamp 
+} from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Users, 
   Clock, 
@@ -20,16 +35,15 @@ import {
   Monitor,
   MapPin,
   Settings,
-  ArrowUpRight,
-  ClipboardCheck,
-  Trash2,
-  Database,
   History,
   TrendingUp,
-  Award
+  PlusCircle,
+  Trash2,
+  Database,
+  UserCheck
 } from "lucide-react";
-import { format, subDays } from "date-fns";
-import { AttendanceLog } from "@/lib/types";
+import { format, subDays, parse } from "date-fns";
+import { AttendanceLog, UserProfile } from "@/lib/types";
 import { summarizeHandoverNotes, SummarizeHandoverNotesOutput } from "@/ai/flows/summarize-handover-notes";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -40,7 +54,8 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogDescription,
-  DialogTrigger
+  DialogTrigger,
+  DialogFooter
 } from "@/components/ui/dialog";
 
 export default function AdminDashboard() {
@@ -53,6 +68,20 @@ export default function AdminDashboard() {
   const [settingLocation, setSettingLocation] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
   const { toast } = useToast();
+
+  // Manual Attendance State
+  const [manualOpen, setManualOpen] = useState(false);
+  const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [manualTime, setManualTime] = useState(format(new Date(), "HH:mm"));
+  const [manualType, setManualType] = useState<"in" | "out">("in");
+  const [isLoggingManual, setIsLoggingManual] = useState(false);
+
+  // Fetch all staff for manual select
+  const staffQuery = useMemo(() => {
+    if (!profile?.organizationId) return null;
+    return query(collection(db, "users"), where("organizationId", "==", profile.organizationId));
+  }, [db, profile?.organizationId]);
+  const { data: allStaff } = useCollection<UserProfile>(staffQuery);
 
   useEffect(() => {
     if (!profile?.organizationId || !db) return;
@@ -76,11 +105,60 @@ export default function AdminDashboard() {
   const stats = {
     totalOnSite: logs.filter(l => !l.clockOutTime).length,
     lateArrivals: logs.filter(l => l.status === 'late').length,
-    overtimeCount: logs.filter(l => (l.overtimeMinutes || 0) > 0).length,
     totalOvertime: logs.reduce((acc, curr) => acc + (curr.overtimeMinutes || 0), 0),
     avgMood: logs.filter(l => l.moodRating).length > 0 
       ? (logs.reduce((acc, curr) => acc + (curr.moodRating || 0), 0) / logs.filter(l => l.moodRating).length).toFixed(1)
       : "N/A"
+  };
+
+  const handleManualAttendance = async () => {
+    if (!selectedStaffId || !db || !profile?.organizationId) return;
+    setIsLoggingManual(true);
+    const staffMember = allStaff?.find(s => s.uid === selectedStaffId);
+    if (!staffMember) return;
+
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const timeStr = `${manualTime}:00`;
+
+    try {
+      if (manualType === "in") {
+        const startThreshold = parse(staffMember.shiftStart || "08:00", 'HH:mm', new Date());
+        const actualIn = parse(manualTime, 'HH:mm', new Date());
+        const status = actualIn > startThreshold ? 'late' : 'on-time';
+
+        const newLogRef = doc(collection(db, "attendance_logs"));
+        await setDoc(newLogRef, {
+          id: newLogRef.id,
+          userId: staffMember.uid,
+          userName: staffMember.name,
+          userDepartment: staffMember.department,
+          organizationId: profile.organizationId,
+          date: today,
+          clockInTime: timeStr,
+          clockOutTime: null,
+          status: status,
+          manualOverride: true,
+          verifiedAt: new Date().toISOString()
+        });
+        toast({ title: "Arrival Logged", description: `Supervisor override for ${staffMember.name}` });
+      } else {
+        const existingLog = logs.find(l => l.userId === selectedStaffId && !l.clockOutTime);
+        if (!existingLog) {
+          toast({ title: "No Active Session", description: "Staff is not currently clocked in.", variant: "destructive" });
+          return;
+        }
+        await updateDoc(doc(db, "attendance_logs", existingLog.id), {
+          clockOutTime: timeStr,
+          manualOverride: true
+        });
+        toast({ title: "Departure Logged", description: `Supervisor override for ${staffMember.name}` });
+      }
+      setManualOpen(false);
+    } catch (err) {
+      toast({ title: "Error", description: "Manual log failed.", variant: "destructive" });
+    } finally {
+      setIsLoggingManual(false);
+    }
   };
 
   const handleSetPerimeter = () => {
@@ -184,9 +262,63 @@ export default function AdminDashboard() {
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">PulseLog Command Center</span>
           </div>
           <h1 className="text-3xl font-headline font-extrabold text-foreground tracking-tight">Operational Overview</h1>
-          <p className="text-sm text-muted-foreground mt-1">Workforce monitoring for <span className="font-bold text-primary">{organization?.name}</span></p>
+          <p className="text-sm text-muted-foreground mt-1">Institutional workforce monitoring for <span className="font-bold text-primary">{organization?.name}</span></p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Dialog open={manualOpen} onOpenChange={setManualOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="rounded-xl border-2">
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Manual Log
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-[90vw] sm:max-w-md rounded-3xl">
+              <DialogHeader>
+                <DialogTitle>Administrative Override</DialogTitle>
+                <DialogDescription>Manually log attendance for staff without devices.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Select Personnel</Label>
+                  <Select onValueChange={setSelectedStaffId}>
+                    <SelectTrigger className="rounded-xl h-11">
+                      <SelectValue placeholder="Select staff member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allStaff?.map(s => (
+                        <SelectItem key={s.uid} value={s.uid}>{s.name} ({s.department})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Action Type</Label>
+                    <Select onValueChange={(v: any) => setManualType(v)} defaultValue="in">
+                      <SelectTrigger className="rounded-xl h-11">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="in">Arrival (Clock In)</SelectItem>
+                        <SelectItem value="out">Departure (Clock Out)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Protocol Time</Label>
+                    <Input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)} className="rounded-xl h-11" />
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button onClick={handleManualAttendance} disabled={isLoggingManual || !selectedStaffId} className="w-full h-11 rounded-xl">
+                  {isLoggingManual ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="mr-2 h-4 w-4" />}
+                  Finalize Manual Entry
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <Dialog>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="rounded-xl border-2">
@@ -194,7 +326,7 @@ export default function AdminDashboard() {
                 Config
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-[90vw] sm:max-w-md">
+            <DialogContent className="max-w-[90vw] sm:max-w-md rounded-3xl">
               <DialogHeader>
                 <DialogTitle>System Configuration</DialogTitle>
                 <DialogDescription>Manage geofencing and database maintenance.</DialogDescription>
@@ -230,7 +362,7 @@ export default function AdminDashboard() {
                       className="w-full h-10 rounded-xl"
                     >
                       {cleaningUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <History className="mr-2 h-4 w-4" />}
-                      Purge Logs (&gt;30 Days)
+                      Purge Records (&gt;30 Days)
                     </Button>
                   </div>
                 </div>
@@ -252,7 +384,7 @@ export default function AdminDashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <Card className="border-none shadow-sm bg-[#002B5B] text-white">
+        <Card className="border-none shadow-sm bg-[#002B5B] text-white rounded-2xl">
           <CardContent className="p-6">
             <div className="flex justify-between items-start mb-4">
               <Users className="h-5 w-5 opacity-60" />
@@ -263,7 +395,7 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-sm bg-card border-l-4 border-l-destructive">
+        <Card className="border-none shadow-sm bg-card border-l-4 border-l-destructive rounded-2xl">
           <CardContent className="p-6">
             <div className="flex justify-between items-start mb-4">
               <AlertCircle className="h-5 w-5 text-destructive" />
@@ -274,18 +406,18 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-sm bg-card border-l-4 border-l-green-600">
+        <Card className="border-none shadow-sm bg-card border-l-4 border-l-green-600 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex justify-between items-start mb-4">
               <TrendingUp className="h-5 w-5 text-green-600" />
-              <Badge className="bg-green-600/10 text-green-600 text-[9px] uppercase border-green-600/20">Reward Eligible</Badge>
+              <Badge className="bg-green-600/10 text-green-600 text-[9px] uppercase border-green-600/20">Reward Metrics</Badge>
             </div>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-1">Total Overtime (Mins)</p>
             <h3 className="text-4xl font-black tracking-tighter text-green-600">{stats.totalOvertime}</h3>
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-sm bg-card border-l-4 border-l-primary">
+        <Card className="border-none shadow-sm bg-card border-l-4 border-l-primary rounded-2xl">
           <CardContent className="p-6">
             <div className="flex justify-between items-start mb-4">
               <Smile className="h-5 w-5 text-primary" />
@@ -297,14 +429,14 @@ export default function AdminDashboard() {
       </div>
 
       {aiSummary && (
-        <Card className="border-none shadow-xl bg-gradient-to-br from-primary/10 via-background to-background animate-in fade-in slide-in-from-top-4">
+        <Card className="border-none shadow-xl bg-gradient-to-br from-primary/10 via-background to-background animate-in fade-in slide-in-from-top-4 rounded-[2.5rem]">
           <CardHeader className="border-b bg-primary/5 p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <BrainCircuit className="h-6 w-6 text-primary" />
                 <CardTitle className="text-lg font-headline font-bold">Executive Intelligence Synthesis</CardTitle>
               </div>
-              <Badge variant="outline" className="text-[10px] font-bold tracking-widest border-primary/20 bg-white">REPORTS ENGINE 2.5</Badge>
+              <Badge variant="outline" className="text-[10px] font-bold tracking-widest border-primary/20 bg-white">GENKIT ENGINE 1.0</Badge>
             </div>
           </CardHeader>
           <CardContent className="p-8">
@@ -361,7 +493,7 @@ export default function AdminDashboard() {
         <div className="flex items-center justify-between border-b pb-4">
           <h2 className="text-xl font-headline font-bold flex items-center gap-3">
             <Activity className="h-5 w-5 text-primary" />
-            Personnel Status Stream
+            Institutional Presence Stream
           </h2>
           <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -371,11 +503,11 @@ export default function AdminDashboard() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {loading ? (
-            Array(4).fill(0).map((_, i) => <Card key={i} className="h-48 animate-pulse bg-muted/30" />)
+            Array(4).fill(0).map((_, i) => <Card key={i} className="h-48 animate-pulse bg-muted/30 rounded-2xl" />)
           ) : logs.length === 0 ? (
             <div className="col-span-full py-20 text-center border-2 border-dashed rounded-[2rem] bg-card/50">
-              <ClipboardCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-10" />
-              <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">No verified check-ins for {format(new Date(), 'MMM do')}</p>
+              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-10" />
+              <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">No active personnel logs for {format(new Date(), 'MMM do')}</p>
             </div>
           ) : (
             logs.map((log) => (
@@ -408,6 +540,7 @@ export default function AdminDashboard() {
                         +{log.overtimeMinutes}m OT
                       </Badge>
                     )}
+                    {log.manualOverride && <Badge variant="outline" className="text-[8px] h-4 uppercase border-primary/20 text-primary bg-primary/5">Manual</Badge>}
                   </div>
                 </CardHeader>
                 <CardContent className="p-5 pt-4 space-y-4">
