@@ -68,7 +68,7 @@ export default function JoinOrganizationPage() {
         shiftEnd,
         createdAt: serverTimestamp(),
       });
-      toast({ title: "Registration Successful", description: `Welcome to the ${organization.name} workforce.` });
+      toast({ title: "Registration Successful", description: `Welcome to the ${organization.name} team.` });
       router.push("/dashboard/staff");
     } catch (error: any) {
       toast({ title: "Registration Failed", description: error.message, variant: "destructive" });
@@ -81,7 +81,7 @@ export default function JoinOrganizationPage() {
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
         <Loader2 className="h-12 w-12 text-primary animate-spin" />
-        <p className="text-[10px] font-black text-primary animate-pulse uppercase tracking-[0.3em]">Validating Access Token...</p>
+        <p className="text-[10px] font-black text-primary animate-pulse uppercase tracking-[0.3em]">Validating Organization...</p>
       </div>
     </div>
   );
@@ -90,8 +90,8 @@ export default function JoinOrganizationPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md text-center p-12 shadow-2xl rounded-[2.5rem] border-none">
         <ShieldAlert className="h-20 w-20 text-destructive mx-auto mb-8 opacity-20" />
-        <CardTitle className="text-3xl font-headline font-black mb-4">Protocol Expired</CardTitle>
-        <CardDescription className="text-sm font-medium mb-10 leading-relaxed">This invitation token is invalid or has timed out. Please request a fresh synchronization QR from your administrator.</CardDescription>
+        <CardTitle className="text-3xl font-headline font-black mb-4">Invalid Link</CardTitle>
+        <CardDescription className="text-sm font-medium mb-10">This invite link is invalid. Please request a new QR code from your administrator.</CardDescription>
         <Link href="/"><Button className="w-full h-14 rounded-2xl font-bold">Return Home</Button></Link>
       </Card>
     </div>
@@ -120,8 +120,8 @@ export default function JoinOrganizationPage() {
                 <Input placeholder="Personnel Full Name" value={fullName} onChange={e => setFullName(e.target.value)} required className="h-14 rounded-2xl" />
               </div>
               <div className="space-y-2">
-                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Clinical Unit</Label>
-                <Input placeholder="e.g., Ward 4, ER" value={department} onChange={e => setDepartment(e.target.value)} required className="h-14 rounded-2xl" />
+                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Department</Label>
+                <Input placeholder="e.g., Sales, Operations" value={department} onChange={e => setDepartment(e.target.value)} required className="h-14 rounded-2xl" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-6 p-6 bg-primary/5 rounded-[2rem] border border-primary/10">
@@ -135,25 +135,23 @@ export default function JoinOrganizationPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Institutional Email</Label>
-              <Input type="email" placeholder="name@facility.com" value={email} onChange={e => setEmail(e.target.value)} required className="h-14 rounded-2xl" />
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Work Email</Label>
+              <Input type="email" placeholder="name@org.com" value={email} onChange={e => setEmail(e.target.value)} required className="h-14 rounded-2xl" />
             </div>
             <div className="space-y-2">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">System Password</Label>
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Password</Label>
               <div className="relative">
                 <Input type={showPassword ? "text" : "password"} placeholder="Min. 8 chars" value={password} onChange={e => setPassword(e.target.value)} required className="h-14 rounded-2xl pr-12" />
                 <Button type="button" variant="ghost" className="absolute right-0 top-0 h-full px-4" onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</Button>
               </div>
             </div>
             <Button className="w-full h-16 text-xl font-black rounded-3xl shadow-2xl mt-4" type="submit" disabled={loading}>
-              {loading ? <Loader2 className="animate-spin h-6 w-6" /> : <><UserPlus className="mr-2 h-6 w-6" /> Authorize & Join Workforce</>}
+              {loading ? <Loader2 className="animate-spin h-6 w-6" /> : <><UserPlus className="mr-2 h-6 w-6" /> Join Workforce</>}
             </Button>
           </form>
         </CardContent>
         <CardFooter className="flex flex-col gap-6 text-center p-12 pt-0">
-          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em]">Institutional protocol requires active presence verification.</p>
-          <div className="h-px w-full bg-border" />
-          <Link href="/login" className="text-sm text-primary font-bold hover:underline">Existing Personnel Login</Link>
+          <Link href="/login" className="text-sm text-primary font-bold hover:underline">Existing Staff Login</Link>
         </CardFooter>
       </Card>
     </div>

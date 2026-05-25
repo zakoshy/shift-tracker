@@ -3,7 +3,7 @@
   "entities": {
     "Organization": {
       "title": "Organization",
-      "description": "A healthcare facility or department using PulseLog.",
+      "description": "A business facility or department using PulseLog.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -34,7 +34,7 @@
     },
     "AttendanceLog": {
       "title": "Attendance Log",
-      "description": "A record of a staff member's shift arrival, departure, and clinical handover.",
+      "description": "A record of a staff member's shift arrival, departure, and operational notes.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -45,9 +45,10 @@
         "date": { "type": "string", "description": "YYYY-MM-DD" },
         "clockInTime": { "type": "string" },
         "clockOutTime": { "type": "string" },
-        "status": { "type": "string", "enum": ["on-time", "late", "early-departure", "present"] },
+        "status": { "type": "string", "enum": ["on-time", "late", "early-departure", "present", "overtime"] },
         "handoverNotes": { "type": "string" },
-        "moodRating": { "type": "integer", "enum": [1, 2, 3] }
+        "moodRating": { "type": "integer", "enum": [1, 2, 3] },
+        "overtimeMinutes": { "type": "integer" }
       },
       "required": ["id", "userId", "organizationId", "date"]
     }
@@ -58,7 +59,7 @@
   "firestore": {
     "/organizations/{organizationId}": {
       "schema": { "$ref": "#/entities/Organization" },
-      "description": "Stores core facility details."
+      "description": "Stores core organization details."
     },
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserProfile" },
@@ -66,7 +67,7 @@
     },
     "/attendance_logs/{logId}": {
       "schema": { "$ref": "#/entities/AttendanceLog" },
-      "description": "Stores daily shift attendance and clinical handover intelligence."
+      "description": "Stores daily shift attendance and operational intelligence."
     }
   }
 }

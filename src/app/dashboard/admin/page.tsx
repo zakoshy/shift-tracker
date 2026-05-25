@@ -24,7 +24,9 @@ import {
   ClipboardCheck,
   Trash2,
   Database,
-  History
+  History,
+  TrendingUp,
+  Award
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { AttendanceLog } from "@/lib/types";
@@ -74,7 +76,8 @@ export default function AdminDashboard() {
   const stats = {
     totalOnSite: logs.filter(l => !l.clockOutTime).length,
     lateArrivals: logs.filter(l => l.status === 'late').length,
-    earlyDepartures: logs.filter(l => l.status === 'early-departure').length,
+    overtimeCount: logs.filter(l => (l.overtimeMinutes || 0) > 0).length,
+    totalOvertime: logs.reduce((acc, curr) => acc + (curr.overtimeMinutes || 0), 0),
     avgMood: logs.filter(l => l.moodRating).length > 0 
       ? (logs.reduce((acc, curr) => acc + (curr.moodRating || 0), 0) / logs.filter(l => l.moodRating).length).toFixed(1)
       : "N/A"
@@ -111,20 +114,20 @@ export default function AdminDashboard() {
 
   const handleDeleteLog = async (logId: string) => {
     if (!db) return;
-    const confirmDelete = window.confirm("SECURITY ALERT: This will permanently remove this shift record from the institutional log. Are you sure you wish to proceed?");
+    const confirmDelete = window.confirm("SECURITY ALERT: This will permanently remove this record. Are you sure?");
     if (!confirmDelete) return;
     
     try {
       await deleteDoc(doc(db, "attendance_logs", logId));
-      toast({ title: "Record Deleted", description: "The shift log has been removed." });
+      toast({ title: "Record Deleted", description: "The log has been removed." });
     } catch (err) {
-      toast({ title: "Error", description: "Unauthorized deletion attempt.", variant: "destructive" });
+      toast({ title: "Error", description: "Deletion failed.", variant: "destructive" });
     }
   };
 
   const handleCleanupOldLogs = async () => {
     if (!db || !profile?.organizationId) return;
-    const confirmCleanup = window.confirm("CAUTION: This will permanently delete all attendance logs older than 30 days. This action is irreversible and compliant with data retention protocols. Proceed?");
+    const confirmCleanup = window.confirm("CAUTION: This will permanently delete records older than 30 days. Proceed?");
     if (!confirmCleanup) return;
 
     setCleaningUp(true);
@@ -145,7 +148,7 @@ export default function AdminDashboard() {
       
       toast({ title: "Database Optimized", description: `${snap.size} legacy records purged.` });
     } catch (err) {
-      toast({ title: "Cleanup Failed", description: "Could not process database maintenance.", variant: "destructive" });
+      toast({ title: "Cleanup Failed", description: "Maintenance error.", variant: "destructive" });
     } finally {
       setCleaningUp(false);
     }
@@ -154,7 +157,7 @@ export default function AdminDashboard() {
   const handleGenAIReport = async () => {
     const notes = logs.filter(l => l.handoverNotes).map(l => `${l.userName}: ${l.handoverNotes}`);
     if (notes.length === 0) {
-      toast({ title: "Insufficient Data", description: "No notes available to synthesize today.", variant: "destructive" });
+      toast({ title: "Insufficient Data", description: "No notes available today.", variant: "destructive" });
       return;
     }
     setSummarizing(true);
@@ -164,9 +167,9 @@ export default function AdminDashboard() {
         startDate: format(new Date(), 'yyyy-MM-dd'),
       });
       setAiSummary(result);
-      toast({ title: "Intelligence Ready", description: "Executive summary generated." });
+      toast({ title: "Intelligence Ready", description: "Operational summary generated." });
     } catch (err) {
-      toast({ title: "AI Synthesis Error", description: "Failed to process handovers.", variant: "destructive" });
+      toast({ title: "AI Synthesis Error", description: "Failed to process notes.", variant: "destructive" });
     } finally {
       setSummarizing(false);
     }
@@ -180,8 +183,8 @@ export default function AdminDashboard() {
             <ShieldCheck className="h-4 w-4 text-primary" />
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">PulseLog Command Center</span>
           </div>
-          <h1 className="text-3xl font-headline font-extrabold text-foreground tracking-tight">Institutional Overview</h1>
-          <p className="text-sm text-muted-foreground mt-1">Real-time operational monitoring for <span className="font-bold text-primary">{organization?.name}</span></p>
+          <h1 className="text-3xl font-headline font-extrabold text-foreground tracking-tight">Operational Overview</h1>
+          <p className="text-sm text-muted-foreground mt-1">Workforce monitoring for <span className="font-bold text-primary">{organization?.name}</span></p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Dialog>
@@ -193,7 +196,7 @@ export default function AdminDashboard() {
             </DialogTrigger>
             <DialogContent className="max-w-[90vw] sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Institutional Configuration</DialogTitle>
+                <DialogTitle>System Configuration</DialogTitle>
                 <DialogDescription>Manage geofencing and database maintenance.</DialogDescription>
               </DialogHeader>
               <div className="py-4 space-y-6">
@@ -209,17 +212,17 @@ export default function AdminDashboard() {
                   </div>
                   <Button onClick={handleSetPerimeter} disabled={settingLocation} variant="outline" className="w-full h-10 rounded-xl">
                     {settingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MapPin className="mr-2 h-4 w-4" />}
-                    Synchronize GPS Perimeter
+                    Lock Site Perimeter
                   </Button>
                 </div>
 
                 <div className="space-y-3">
                   <h4 className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
-                    <Database className="h-3 w-3" /> Database Retention
+                    <Database className="h-3 w-3" /> Data Retention
                   </h4>
                   <div className="p-4 bg-destructive/5 rounded-2xl border border-destructive/10">
-                    <p className="text-[10px] text-destructive font-bold leading-tight uppercase mb-2">Caution: Institutional Purge</p>
-                    <p className="text-xs text-muted-foreground mb-4">Clearing records older than 30 days keeps the system fast and compliant with temporary data storage protocols.</p>
+                    <p className="text-[10px] text-destructive font-bold leading-tight uppercase mb-2">Caution: Database Purge</p>
+                    <p className="text-xs text-muted-foreground mb-4">Clearing records older than 30 days maintains system performance.</p>
                     <Button 
                       onClick={handleCleanupOldLogs} 
                       disabled={cleaningUp} 
@@ -227,7 +230,7 @@ export default function AdminDashboard() {
                       className="w-full h-10 rounded-xl"
                     >
                       {cleaningUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <History className="mr-2 h-4 w-4" />}
-                      Purge Legacy Logs (&gt;30 Days)
+                      Purge Logs (&gt;30 Days)
                     </Button>
                   </div>
                 </div>
@@ -243,7 +246,7 @@ export default function AdminDashboard() {
           </Link>
           <Button onClick={handleGenAIReport} size="sm" disabled={summarizing || logs.length === 0} className="rounded-xl shadow-lg bg-primary hover:bg-primary/90">
             {summarizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BrainCircuit className="mr-2 h-4 w-4" />}
-            Synthesize Handovers
+            Synthesize Daily Logs
           </Button>
         </div>
       </div>
@@ -253,7 +256,7 @@ export default function AdminDashboard() {
           <CardContent className="p-6">
             <div className="flex justify-between items-start mb-4">
               <Users className="h-5 w-5 opacity-60" />
-              <Badge className="bg-white/20 text-[9px] uppercase">Live</Badge>
+              <Badge className="bg-white/20 text-[9px] uppercase">Active</Badge>
             </div>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mb-1">Personnel On-Site</p>
             <h3 className="text-4xl font-black tracking-tighter">{stats.totalOnSite}</h3>
@@ -263,21 +266,22 @@ export default function AdminDashboard() {
         <Card className="border-none shadow-sm bg-card border-l-4 border-l-destructive">
           <CardContent className="p-6">
             <div className="flex justify-between items-start mb-4">
-              <Clock className="h-5 w-5 text-destructive" />
+              <AlertCircle className="h-5 w-5 text-destructive" />
               <Badge variant="destructive" className="text-[9px] uppercase">Compliance</Badge>
             </div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-1">Arrival Infractions</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-1">Late Arrivals</p>
             <h3 className="text-4xl font-black tracking-tighter text-destructive">{stats.lateArrivals}</h3>
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-sm bg-card border-l-4 border-l-amber-500">
+        <Card className="border-none shadow-sm bg-card border-l-4 border-l-green-600">
           <CardContent className="p-6">
             <div className="flex justify-between items-start mb-4">
-              <ArrowUpRight className="h-5 w-5 text-amber-500" />
+              <TrendingUp className="h-5 w-5 text-green-600" />
+              <Badge className="bg-green-600/10 text-green-600 text-[9px] uppercase border-green-600/20">Reward Eligible</Badge>
             </div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-1">Early Departures</p>
-            <h3 className="text-4xl font-black tracking-tighter text-amber-500">{stats.earlyDepartures}</h3>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-1">Total Overtime (Mins)</p>
+            <h3 className="text-4xl font-black tracking-tighter text-green-600">{stats.totalOvertime}</h3>
           </CardContent>
         </Card>
 
@@ -286,7 +290,7 @@ export default function AdminDashboard() {
             <div className="flex justify-between items-start mb-4">
               <Smile className="h-5 w-5 text-primary" />
             </div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-1">Institutional Morale</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-1">Morale Score</p>
             <h3 className="text-4xl font-black tracking-tighter text-primary">{stats.avgMood} <span className="text-lg opacity-40 font-bold">/ 3.0</span></h3>
           </CardContent>
         </Card>
@@ -357,7 +361,7 @@ export default function AdminDashboard() {
         <div className="flex items-center justify-between border-b pb-4">
           <h2 className="text-xl font-headline font-bold flex items-center gap-3">
             <Activity className="h-5 w-5 text-primary" />
-            Active Presence Stream
+            Personnel Status Stream
           </h2>
           <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -371,7 +375,7 @@ export default function AdminDashboard() {
           ) : logs.length === 0 ? (
             <div className="col-span-full py-20 text-center border-2 border-dashed rounded-[2rem] bg-card/50">
               <ClipboardCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-10" />
-              <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">No verified arrivals for {format(new Date(), 'MMM do')}</p>
+              <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">No verified check-ins for {format(new Date(), 'MMM do')}</p>
             </div>
           ) : (
             logs.map((log) => (
@@ -397,7 +401,14 @@ export default function AdminDashboard() {
                       <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">{log.userDepartment}</p>
                     </div>
                   </div>
-                  {log.status === 'late' && <Badge variant="destructive" className="text-[8px] h-4 uppercase">Late</Badge>}
+                  <div className="flex flex-col items-end gap-1">
+                    {log.status === 'late' && <Badge variant="destructive" className="text-[8px] h-4 uppercase">Late</Badge>}
+                    {(log.overtimeMinutes || 0) > 0 && (
+                      <Badge className="bg-green-600 text-white text-[8px] h-4 uppercase">
+                        +{log.overtimeMinutes}m OT
+                      </Badge>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent className="p-5 pt-4 space-y-4">
                   <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border">

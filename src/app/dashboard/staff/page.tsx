@@ -28,13 +28,13 @@ import {
   MapPin,
   LocateFixed,
   ShieldX,
-  Stethoscope,
+  Briefcase,
   Info,
   BrainCircuit,
   Heart
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { format, differenceInMinutes, parse } from "date-fns";
 import { AttendanceLog, MoodRating } from "@/lib/types";
 import { cn, calculateDistance } from "@/lib/utils";
 
@@ -83,7 +83,7 @@ export default function StaffPage() {
           setLocationStatus('verified');
         } else {
           setLocationStatus('outside');
-          toast({ title: "Perimeter Violation", description: "GPS positioning outside institutional geofence.", variant: "destructive" });
+          toast({ title: "Perimeter Check Failed", description: "You are outside the organization fence.", variant: "destructive" });
         }
       },
       () => setLocationStatus('denied'),
@@ -115,7 +115,7 @@ export default function StaffPage() {
 
   const handleClockIn = async () => {
     if (!profile || !db || locationStatus !== 'verified') {
-      toast({ title: "Security Failure", description: "GPS verification required for arrival.", variant: "destructive" });
+      toast({ title: "Security Alert", description: "GPS verification required.", variant: "destructive" });
       return;
     }
     setLoading(true);
@@ -123,9 +123,8 @@ export default function StaffPage() {
     const todayStr = format(now, 'yyyy-MM-dd');
     const timeStr = format(now, 'HH:mm:ss');
     
-    const [startH, startM] = (profile.shiftStart || "08:00").split(':').map(Number);
-    const lateThreshold = new Date();
-    lateThreshold.setHours(startH, startM, 0);
+    const startTimeStr = profile.shiftStart || "08:00";
+    const lateThreshold = parse(startTimeStr, 'HH:mm', now);
     const status = now > lateThreshold ? 'late' : 'on-time';
 
     const newLogRef = doc(collection(db, "attendance_logs"));
@@ -141,15 +140,16 @@ export default function StaffPage() {
       status: status,
       handoverNotes: null,
       moodRating: null,
+      overtimeMinutes: 0,
       verifiedAt: now.toISOString(),
       verifiedLocation: coords,
     };
     try {
       await setDoc(newLogRef, newLog);
       setAttendance(newLog as AttendanceLog);
-      toast({ title: status === 'late' ? "Late Arrival Noted" : "Clocked In", description: `Arrival verified at ${format(now, 'hh:mm a')}` });
+      toast({ title: status === 'late' ? "Arrival Noted (Late)" : "Clocked In", description: `Arrival verified at ${format(now, 'hh:mm a')}` });
     } catch (err) {
-      toast({ title: "Error", description: "Failed to log shift start.", variant: "destructive" });
+      toast({ title: "Error", description: "Log failed.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -161,25 +161,32 @@ export default function StaffPage() {
     const now = new Date();
     const timeStr = format(now, 'HH:mm:ss');
     
-    const [endH, endM] = (profile.shiftEnd || "17:00").split(':').map(Number);
-    const earlyThreshold = new Date();
-    earlyThreshold.setHours(endH, endM, 0);
+    const endTimeStr = profile.shiftEnd || "17:00";
+    const shiftEnd = parse(endTimeStr, 'HH:mm', now);
+    
+    let overtime = 0;
     let status = attendance.status;
-    if (now < earlyThreshold) {
+
+    if (now > shiftEnd) {
+      overtime = differenceInMinutes(now, shiftEnd);
+      status = 'overtime';
+    } else if (differenceInMinutes(shiftEnd, now) > 5) {
       status = 'early-departure';
     }
+
     try {
       await setDoc(doc(db, "attendance_logs", attendance.id), {
         clockOutTime: timeStr,
         status: status,
         moodRating: mood,
         handoverNotes: notes,
+        overtimeMinutes: overtime
       }, { merge: true });
-      setAttendance(prev => prev ? { ...prev, clockOutTime: timeStr, moodRating: mood, handoverNotes: notes, status } : null);
+      setAttendance(prev => prev ? { ...prev, clockOutTime: timeStr, moodRating: mood, handoverNotes: notes, status, overtimeMinutes: overtime } : null);
       setClockOutOpen(false);
-      toast({ title: "Shift Secured", description: "Clinical handover synchronized." });
+      toast({ title: "Shift Finalized", description: "Operational notes synchronized." });
     } catch (err) {
-      toast({ title: "Error", description: "Failed to finalize shift.", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to sign out.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -192,13 +199,13 @@ export default function StaffPage() {
       <div className="text-center space-y-2 mb-2">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-[0.2em] mb-4 border border-primary/20">
           <ShieldCheck className="h-4 w-4" />
-          Secure Protocol Active
+          Presence Protocol Active
         </div>
-        <h1 className="text-4xl font-headline font-black text-foreground tracking-tight">Shift Verification</h1>
+        <h1 className="text-4xl font-headline font-black text-foreground tracking-tight">Shift Sync</h1>
         <div className="flex items-center justify-center gap-3 bg-card p-3 rounded-2xl border shadow-sm">
-          <Stethoscope className="h-5 w-5 text-primary" />
+          <Briefcase className="h-5 w-5 text-primary" />
           <div className="text-left">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground leading-none mb-1">Active Rotation</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground leading-none mb-1">Assigned Department</p>
             <p className="text-sm font-bold text-foreground leading-none">{profile?.department}</p>
           </div>
         </div>
@@ -227,10 +234,9 @@ export default function StaffPage() {
                  locationStatus === 'checking' ? <Loader2 className="h-5 w-5 animate-spin" /> :
                  <ShieldX className="h-5 w-5" />}
                 <span className="text-[10px] font-bold uppercase tracking-[0.2em]">
-                  {locationStatus === 'verified' ? "Facility Perimeter Locked" :
-                   locationStatus === 'checking' ? "Acquiring GPS Signal..." :
-                   locationStatus === 'denied' ? "GPS Access Denied" : 
-                   locationStatus === 'outside' ? "Outside Geofence" : "No GPS Link"}
+                  {locationStatus === 'verified' ? "Perimeter Verified" :
+                   locationStatus === 'checking' ? "Scanning GPS..." :
+                   locationStatus === 'outside' ? "Outside Fence" : "No GPS Sync"}
                 </span>
               </div>
               <Button variant="ghost" size="sm" className="h-7 text-[9px] font-bold uppercase border hover:bg-white" onClick={verifyLocation}>Recalibrate</Button>
@@ -251,10 +257,6 @@ export default function StaffPage() {
                     </>
                   )}
                 </Button>
-                <div className="flex items-start gap-3 p-4 bg-muted/30 rounded-2xl">
-                  <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                  <p className="text-[10px] font-medium leading-relaxed text-muted-foreground italic">Arrival logs are synchronized with institutional payroll and geofenced to your ward location.</p>
-                </div>
               </div>
             ) : attendance.clockOutTime ? (
               <div className="py-8 flex flex-col items-center text-center space-y-8 animate-in fade-in zoom-in-95 duration-500">
@@ -263,7 +265,9 @@ export default function StaffPage() {
                 </div>
                 <div>
                   <h3 className="text-3xl font-headline font-black text-foreground">Shift Completed</h3>
-                  <p className="text-muted-foreground text-sm font-medium mt-2">Intelligence handover successfully synchronized to the Command Center.</p>
+                  {attendance.overtimeMinutes ? (
+                    <Badge className="mt-2 bg-green-600">Reward Points: +{attendance.overtimeMinutes} OT</Badge>
+                  ) : null}
                 </div>
                 <div className="grid grid-cols-2 gap-4 w-full">
                   <div className="bg-muted/30 p-6 rounded-3xl border flex flex-col items-center"><span className="text-[10px] font-bold text-muted-foreground uppercase mb-2">Arrival</span><span className="text-2xl font-black font-mono">{attendance.clockInTime?.substring(0, 5)}</span></div>
@@ -290,10 +294,9 @@ export default function StaffPage() {
                     disabled={loading}
                   >
                     <ArrowRight className="h-8 w-8" />
-                    <span className="text-xl uppercase tracking-tight">Finalize Handover</span>
-                    <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Clinical Protocol Required</span>
+                    <span className="text-xl uppercase tracking-tight">Finalize Departure</span>
+                    <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Operational Protocol Required</span>
                   </Button>
-                  <p className="text-center text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Scanned presence verified at entrance</p>
                 </div>
               </div>
             )}
@@ -304,21 +307,20 @@ export default function StaffPage() {
       <Dialog open={clockOutOpen} onOpenChange={setClockOutOpen}>
         <DialogContent className="sm:max-w-[425px] rounded-[2rem] p-8">
           <DialogHeader className="mb-6">
-            <DialogTitle className="text-3xl font-headline font-black">Departure Protocol</DialogTitle>
-            <DialogDescription className="text-sm font-medium">Capture clinical intelligence and personnel well-being.</DialogDescription>
+            <DialogTitle className="text-3xl font-headline font-black">Departure Log</DialogTitle>
+            <DialogDescription className="text-sm font-medium">Log operational summaries and personal wellness.</DialogDescription>
           </DialogHeader>
           <div className="space-y-8">
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
                 <Heart className="h-4 w-4 text-primary" />
-                <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Clinical Sentiment Score</Label>
+                <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Shift Morale Score</Label>
               </div>
-              <p className="text-[10px] text-muted-foreground italic leading-tight mb-2">This helps administration monitor institutional morale and prevent departmental burnout.</p>
               <div className="flex justify-between gap-3">
                 {[
                   { v: 3, label: 'Smooth', icon: Smile, color: 'text-green-600', bg: 'bg-green-600/10', border: 'border-green-600' },
-                  { v: 2, label: 'Hectic', icon: Meh, color: 'text-amber-600', bg: 'bg-amber-600/10', border: 'border-amber-600' },
-                  { v: 1, label: 'Stress', icon: Frown, color: 'text-red-600', bg: 'bg-red-600/10', border: 'border-red-600' }
+                  { v: 2, label: 'Standard', icon: Meh, color: 'text-amber-600', bg: 'bg-amber-600/10', border: 'border-amber-600' },
+                  { v: 1, label: 'Hectic', icon: Frown, color: 'text-red-600', bg: 'bg-red-600/10', border: 'border-red-600' }
                 ].map((m) => (
                   <button 
                     key={m.v}
@@ -334,13 +336,12 @@ export default function StaffPage() {
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
                 <BrainCircuit className="h-4 w-4 text-primary" />
-                <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Handover Synthesis (Required)</Label>
+                <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Operational Notes (Required)</Label>
               </div>
-              <p className="text-[10px] text-muted-foreground italic leading-tight mb-2">Gemini AI will synthesize these notes to highlight critical patient issues for the next shift.</p>
-              <Textarea placeholder="Critical patient status, clinical flags, pending tasks..." className="min-h-[160px] rounded-2xl p-4 bg-muted/30 border-none text-sm font-medium" value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <Textarea placeholder="Tasks completed, issues flagged, shift summary..." className="min-h-[160px] rounded-2xl p-4 bg-muted/30 border-none text-sm font-medium" value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
             <Button className="w-full h-14 text-xl font-bold rounded-2xl shadow-2xl" disabled={!mood || !notes || loading} onClick={handleClockOut}>
-              {loading ? <Loader2 className="animate-spin h-6 w-6" /> : "Sign Out & Synchronize"}
+              {loading ? <Loader2 className="animate-spin h-6 w-6" /> : "Sign Out & Sync"}
             </Button>
           </div>
         </DialogContent>

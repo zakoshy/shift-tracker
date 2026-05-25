@@ -1,6 +1,6 @@
 
 export type UserRole = 'admin' | 'staff';
-export type AttendanceStatus = 'on-time' | 'late' | 'early-departure' | 'present';
+export type AttendanceStatus = 'on-time' | 'late' | 'early-departure' | 'present' | 'overtime';
 export type MoodRating = 1 | 2 | 3; // 1: Stressed, 2: Hectic, 3: Smooth
 
 export interface Organization {
@@ -38,6 +38,7 @@ export interface AttendanceLog {
   status: AttendanceStatus;
   handoverNotes: string | null;
   moodRating: MoodRating | null;
+  overtimeMinutes?: number;
   verifiedAt?: string;
   verifiedLocation?: {
     lat: number;
