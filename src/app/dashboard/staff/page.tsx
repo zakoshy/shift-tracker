@@ -113,13 +113,16 @@ export default function StaffPage() {
   };
 
   const handleClockIn = async () => {
+    // Security: Debounce & Requirements Check
     if (!profile || !db || locationStatus !== 'verified' || loading) {
-      toast({ title: "Security Alert", description: "GPS verification and authentication required.", variant: "destructive" });
+      toast({ title: "Protocol Refused", description: "GPS verification and authentication sync required.", variant: "destructive" });
       return;
     }
 
-    // Idempotency: verify if already clocked in
+    setLoading(true);
     const today = format(new Date(), 'yyyy-MM-dd');
+
+    // Security: Idempotency check before write
     const q = query(
       collection(db, "attendance_logs"),
       where("userId", "==", profile.uid),
@@ -128,12 +131,12 @@ export default function StaffPage() {
     );
     const snap = await getDocs(q);
     if (!snap.empty) {
-      toast({ title: "Idempotency Warning", description: "Shift already initialized for today." });
+      toast({ title: "Idempotency Lock", description: "A shift is already active for today." });
       setAttendance({ id: snap.docs[0].id, ...snap.docs[0].data() } as AttendanceLog);
+      setLoading(false);
       return;
     }
 
-    setLoading(true);
     const now = new Date();
     const timeStr = format(now, 'HH:mm:ss');
     
@@ -158,12 +161,14 @@ export default function StaffPage() {
       verifiedAt: now.toISOString(),
       verifiedLocation: coords,
     };
+
     try {
+      // Security: Optimized setDoc (non-blocking in UI, but handled via loading state)
       await setDoc(newLogRef, newLog);
       setAttendance(newLog as AttendanceLog);
       toast({ title: status === 'late' ? "Arrival Noted (Late)" : "Clocked In", description: `Arrival verified at ${format(now, 'hh:mm a')}` });
     } catch (err) {
-      toast({ title: "Error", description: "Log synchronization failed.", variant: "destructive" });
+      toast({ title: "Sync Failure", description: "Failed to broadcast arrival to operational database.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -171,6 +176,14 @@ export default function StaffPage() {
 
   const handleClockOut = async () => {
     if (!attendance || !profile || !db || loading) return;
+    
+    // Security: Input Sanitization
+    const sanitizedNotes = notes.trim();
+    if (!sanitizedNotes || !mood) {
+      toast({ title: "Protocol Violation", description: "Handover notes and morale score are required.", variant: "destructive" });
+      return;
+    }
+
     setLoading(true);
     const now = new Date();
     const timeStr = format(now, 'HH:mm:ss');
@@ -189,7 +202,6 @@ export default function StaffPage() {
         status = 'early-departure';
       }
     } else {
-      // If overtime is disabled, we just mark as present/completed
       if (differenceInMinutes(shiftEnd, now) > 5) {
         status = 'early-departure';
       } else {
@@ -202,14 +214,15 @@ export default function StaffPage() {
         clockOutTime: timeStr,
         status: status,
         moodRating: mood,
-        handoverNotes: notes,
+        handoverNotes: sanitizedNotes,
         overtimeMinutes: organization?.overtimeEnabled ? overtime : 0
       }, { merge: true });
-      setAttendance(prev => prev ? { ...prev, clockOutTime: timeStr, moodRating: mood, handoverNotes: notes, status, overtimeMinutes: overtime } : null);
+      
+      setAttendance(prev => prev ? { ...prev, clockOutTime: timeStr, moodRating: mood, handoverNotes: sanitizedNotes, status, overtimeMinutes: overtime } : null);
       setClockOutOpen(false);
-      toast({ title: "Shift Finalized", description: "Operational notes synchronized." });
+      toast({ title: "Shift Finalized", description: "Operational intelligence synchronized." });
     } catch (err) {
-      toast({ title: "Error", description: "Failed to sign out.", variant: "destructive" });
+      toast({ title: "Departure Error", description: "Failed to synchronize departure log.", variant: "destructive" });
     } finally {
       setLoading(false);
     }

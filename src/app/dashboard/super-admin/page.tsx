@@ -35,7 +35,7 @@ export default function SuperAdminDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // Queries
+  // Security: Query Optimization (Avoiding N+1)
   const orgsQuery = useMemo(() => query(collection(db, "organizations"), orderBy("createdAt", "desc")), [db]);
   const usersQuery = useMemo(() => query(collection(db, "users")), [db]);
 
@@ -58,17 +58,22 @@ export default function SuperAdminDashboard() {
   };
 
   const handleToggleSuspension = async (orgId: string, currentStatus: boolean) => {
+    // Security: Debouncing
+    if (updatingId) return;
     setUpdatingId(orgId);
+    
     try {
+      // Logic: Update the 'suspended' field which is checked at the layout level for RBAC enforcement
       await updateDoc(doc(db, "organizations", orgId), {
         suspended: !currentStatus
       });
+      
       toast({
-        title: !currentStatus ? "Organization Suspended" : "Access Restored",
-        description: `Facility ${orgId} status has been updated.`,
+        title: !currentStatus ? "Institution Suspended" : "Access Restored",
+        description: `Operational facility ${orgId} governance status has been updated. Access will be blocked immediately.`,
       });
     } catch (err) {
-      toast({ title: "Update Failed", description: "Authorization error.", variant: "destructive" });
+      toast({ title: "Governance Update Failed", description: "System authorization error.", variant: "destructive" });
     } finally {
       setUpdatingId(null);
     }
@@ -146,9 +151,7 @@ export default function SuperAdminDashboard() {
         <div className="space-y-1">
           <p className="text-sm font-bold text-amber-900 dark:text-amber-200">SaaS Maintenance Advisory</p>
           <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-            Deleting an organization or user record in Firestore removes their data, but **does not delete their Firebase Authentication login**. 
-            To truly clear an email address for reuse, you must navigate to the **Authentication tab** in the Firebase Console and delete the user record there. 
-            Suspension here blocks access immediately without needing console intervention.
+            Suspension here blocks access immediately for all organizational users. This is the primary control for billing enforcement and security breaches.
           </p>
         </div>
       </div>

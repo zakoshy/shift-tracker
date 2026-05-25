@@ -16,15 +16,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { toast } = useToast();
 
   useEffect(() => {
+    // 1. Authentication Guard
     if (!loading && !user) {
       router.push("/login");
+      return;
     }
 
-    // Handle suspension at layout level
+    // 2. SaaS Suspension Engine: Enforce suspension at layout level for all non-super-admins
     if (!loading && profile && profile.role !== 'super-admin' && organization?.suspended) {
       toast({
-        title: "Account Suspended",
-        description: "Access has been restricted for your organization.",
+        title: "Institution Suspended",
+        description: "Access has been restricted by platform governance. Contact support.",
         variant: "destructive"
       });
       router.push("/login");
@@ -39,13 +41,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
+  // If suspended, don't even render the layout for restricted roles
+  if (profile?.role !== 'super-admin' && organization?.suspended) {
+    return null;
+  }
+
   return (
     <SidebarProvider defaultOpen={true}>
       <div className="flex h-screen w-full overflow-hidden bg-background">
         <SidebarNav />
         
         <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Dashboard Header */}
           <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4 md:px-6">
             <div className="flex items-center gap-2">
               <SidebarTrigger className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-xl" />

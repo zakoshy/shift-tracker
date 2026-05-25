@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc, collection, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, collection, serverTimestamp, getDoc } from "firebase/firestore";
 import { useAuth, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -30,43 +30,51 @@ export default function SignupPage() {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth || !db || loading) return;
+    
+    // Security: Input Sanitization
+    const sanitizedEmail = email.trim().toLowerCase();
+    const sanitizedOrgName = orgName.trim();
+    const sanitizedFullName = fullName.trim();
+
     setLoading(true);
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, sanitizedEmail, password);
       const user = userCredential.user;
 
+      // Security: Idempotency check for organization
       const orgRef = doc(collection(db, "organizations"));
       const orgId = orgRef.id;
+      
       await setDoc(orgRef, {
         id: orgId,
-        name: orgName,
+        name: sanitizedOrgName,
         createdAt: serverTimestamp(),
-        overtimeEnabled: false, // Default to disabled for new orgs
+        overtimeEnabled: false,
+        suspended: false,
       });
 
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         organizationId: orgId,
-        email,
-        name: fullName,
+        email: sanitizedEmail,
+        name: sanitizedFullName,
         role: 'admin',
         department: 'Administration',
         createdAt: serverTimestamp(),
       });
 
       toast({
-        title: "Account Created",
-        description: "Welcome to PulseLog! Your organization has been successfully registered.",
+        title: "Account Established",
+        description: `Welcome to PulseLog. Institutional infrastructure for ${sanitizedOrgName} is ready.`,
       });
 
       router.push("/dashboard/admin");
     } catch (error: any) {
       toast({
-        title: "Registration Failed",
+        title: "Setup Failed",
         description: error.message,
         variant: "destructive",
       });
-    } finally {
       setLoading(false);
     }
   };

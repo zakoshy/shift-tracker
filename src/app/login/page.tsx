@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Activity, Loader2, ArrowLeft, Eye, EyeOff, ShieldAlert } from "lucide-react";
+import { Activity, Loader2, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 
@@ -26,30 +26,31 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth || !db) return;
+    if (!auth || !db || loading) return;
+    
+    // Security: Input Sanitization
+    const sanitizedEmail = email.trim().toLowerCase();
+    
     setLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, sanitizedEmail, password);
       const user = userCredential.user;
 
-      // Check role for redirection
       const profileDoc = await getDoc(doc(db, "users", user.uid));
       if (profileDoc.exists()) {
         const data = profileDoc.data();
         
-        // Super Admin gets absolute priority redirect
         if (data.role === 'super-admin') {
           router.push("/dashboard/super-admin");
           return;
         }
         
-        // Check for organization suspension for non-super-admins
         if (data.organizationId) {
           const orgDoc = await getDoc(doc(db, "organizations", data.organizationId));
           if (orgDoc.exists() && orgDoc.data().suspended) {
             toast({
-              title: "Access Restricted",
-              description: "Your organization account has been suspended. Please contact your administrator.",
+              title: "Institutional Suspension",
+              description: "Your organization account has been suspended by platform governance.",
               variant: "destructive",
             });
             setLoading(false);
@@ -63,18 +64,16 @@ export default function LoginPage() {
           router.push("/dashboard/staff");
         }
       } else {
-        // No profile found - THIS IS CRITICAL
         toast({
-          title: "Profile Not Found",
-          description: "Your login is valid, but no PulseLog profile exists for this UID. Please ensure your Firestore document ID matches your Auth UID.",
+          title: "Profile Protocol Missing",
+          description: "Credential valid, but no operational profile found. Contact admin.",
           variant: "destructive",
         });
-        // We stay on login page so user can see the error
         setLoading(false);
       }
     } catch (error: any) {
       toast({
-        title: "Authentication Failed",
+        title: "Auth Failure",
         description: error.message,
         variant: "destructive",
       });
