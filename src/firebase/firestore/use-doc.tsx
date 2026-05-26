@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -8,9 +9,12 @@ import {
   DocumentData,
   FirestoreError 
 } from 'firebase/firestore';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 /**
  * Hook to listen to a real-time stream of a single Firestore document.
+ * Includes centralized error reporting for security rule violations.
  */
 export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
   const [data, setData] = useState<T | null>(null);
@@ -35,8 +39,12 @@ export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
         }
         setLoading(false);
       },
-      (err) => {
-        console.error('useDoc error:', err);
+      async (err) => {
+        const permissionError = new FirestorePermissionError({
+          path: ref.path,
+          operation: 'get',
+        });
+        errorEmitter.emit('permission-error', permissionError);
         setError(err);
         setLoading(false);
       }

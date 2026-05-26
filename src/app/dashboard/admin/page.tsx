@@ -37,13 +37,11 @@ import {
   Settings,
   History,
   TrendingUp,
-  PlusCircle,
-  Trash2,
-  Database,
   UserCheck,
   BookOpen,
   Zap,
-  ShieldAlert
+  ShieldAlert,
+  Trash2
 } from "lucide-react";
 import { format, subDays, parse } from "date-fns";
 import { AttendanceLog, UserProfile } from "@/lib/types";
@@ -80,31 +78,35 @@ export default function AdminDashboard() {
   const [manualType, setManualType] = useState<"in" | "out">("in");
   const [isLoggingManual, setIsLoggingManual] = useState(false);
 
-  // Fetch all staff for manual select
+  // Memoize Query references to prevent infinite render loops and cache effectively
   const staffQuery = useMemo(() => {
-    if (!profile?.organizationId) return null;
+    if (!profile?.organizationId || !db) return null;
     return query(collection(db, "users"), where("organizationId", "==", profile.organizationId));
   }, [db, profile?.organizationId]);
+
   const { data: allStaff } = useCollection<UserProfile>(staffQuery);
 
-  useEffect(() => {
-    if (!profile?.organizationId || !db) return;
-
+  const todayLogsQuery = useMemo(() => {
+    if (!profile?.organizationId || !db) return null;
     const today = format(new Date(), 'yyyy-MM-dd');
-    const q = query(
+    return query(
       collection(db, "attendance_logs"),
       where("organizationId", "==", profile.organizationId),
       where("date", "==", today)
     );
+  }, [db, profile?.organizationId]);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+  useEffect(() => {
+    if (!todayLogsQuery) return;
+
+    const unsubscribe = onSnapshot(todayLogsQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AttendanceLog[];
       setLogs(data);
       setLoading(false);
     }, () => setLoading(false));
 
     return () => unsubscribe();
-  }, [profile, db]);
+  }, [todayLogsQuery]);
 
   const stats = {
     totalOnSite: logs.filter(l => !l.clockOutTime).length,
@@ -143,7 +145,7 @@ export default function AdminDashboard() {
         const status = actualIn > startThreshold ? 'late' : 'on-time';
 
         const newLogRef = doc(collection(db, "attendance_logs"));
-        await setDoc(newLogRef, {
+        setDoc(newLogRef, {
           id: newLogRef.id,
           userId: staffMember.uid,
           userName: staffMember.name,
@@ -164,7 +166,7 @@ export default function AdminDashboard() {
           setIsLoggingManual(false);
           return;
         }
-        await updateDoc(doc(db, "attendance_logs", existingLog.id), {
+        updateDoc(doc(db, "attendance_logs", existingLog.id), {
           clockOutTime: timeStr,
           manualOverride: true
         });
@@ -395,7 +397,7 @@ export default function AdminDashboard() {
                     "flex items-center gap-4 p-4 rounded-2xl border",
                     hasLocation ? "bg-muted/50 border-border" : "bg-destructive/5 border-destructive/20"
                   )}>
-                    {!hasLocation && <ShieldAlert className="h-5 w-5 text-destructive shrink-0" />}
+                    {!hasLocation && <AlertCircle className="h-5 w-5 text-destructive shrink-0" />}
                     <div>
                       <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Locked Center</p>
                       <p className={cn("text-sm font-mono", !hasLocation && "text-destructive font-bold")}>
@@ -411,7 +413,7 @@ export default function AdminDashboard() {
 
                 <div className="space-y-3">
                   <h4 className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
-                    <Database className="h-3 w-3" /> Data Retention
+                    <History className="h-3 w-3" /> Data Retention
                   </h4>
                   <div className="p-4 bg-destructive/5 rounded-2xl border border-destructive/10">
                     <p className="text-[10px] text-destructive font-bold leading-tight uppercase mb-2">Caution: Database Purge</p>
