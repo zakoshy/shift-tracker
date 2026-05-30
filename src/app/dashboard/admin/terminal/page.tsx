@@ -3,17 +3,20 @@
 
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { Card, CardContent } from "@/components/ui/card";
-import { Activity, ShieldCheck, MapPin, Loader2, Monitor, ShieldAlert } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
+import { Activity, ShieldCheck, MapPin, Loader2, Monitor, ShieldAlert, Download, Printer } from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
 import { format } from "date-fns";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 export default function TerminalPage() {
   const { organization, loading } = usePulseLogAuth();
   const [time, setTime] = useState(new Date());
+  const qrRef = useRef<HTMLCanvasElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -25,6 +28,24 @@ export default function TerminalPage() {
     : "";
 
   const hasLocation = !!(organization?.latitude && organization?.longitude);
+
+  const handleDownloadQR = () => {
+    if (!qrRef.current) return;
+    
+    const canvas = qrRef.current;
+    const url = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `PulseLog-Terminal-${organization?.name || 'Checkpoint'}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({
+      title: "Token Exported",
+      description: "High-resolution sync token downloaded for facility printing.",
+    });
+  };
 
   if (loading) {
     return (
@@ -59,9 +80,9 @@ export default function TerminalPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-16 items-center max-w-7xl w-full">
         <div className="space-y-6 md:space-y-8 text-center lg:text-left">
           <div className="flex flex-col items-center lg:items-start">
-            <Badge variant="outline" className="border-primary text-primary px-4 py-1 text-[10px] md:text-sm font-bold tracking-[0.3em] uppercase mb-4 bg-primary/5">
+            <div className="inline-flex items-center rounded-full border border-primary text-primary px-4 py-1 text-[10px] md:text-sm font-bold tracking-[0.3em] uppercase mb-4 bg-primary/5">
               Secure Checkpoint
-            </Badge>
+            </div>
             <h2 className="text-4xl md:text-7xl font-bold leading-none tracking-tighter mb-4">
               {organization?.name}
             </h2>
@@ -93,18 +114,29 @@ export default function TerminalPage() {
           <Card className="p-6 md:p-12 bg-white rounded-[2rem] md:rounded-[3rem] shadow-[0_0_80px_rgba(41,85,178,0.2)] border-none w-full max-w-sm md:max-w-none">
             <CardContent className="p-0 flex flex-col items-center">
               <div className="bg-white p-2 md:p-4 rounded-2xl">
-                <QRCodeSVG 
+                <QRCodeCanvas 
+                  ref={qrRef}
                   value={terminalUrl} 
-                  size={typeof window !== 'undefined' && window.innerWidth < 768 ? 200 : 320} 
+                  size={320} 
                   level="H" 
-                  includeMargin={false}
-                  className="text-black"
+                  includeMargin={true}
+                  className="text-black w-full max-w-[200px] md:max-w-full h-auto"
                 />
               </div>
               <p className="mt-6 md:mt-8 text-black font-bold text-sm md:text-xl uppercase tracking-widest text-center">
                 Scan to Verify Presence
               </p>
-              <p className="text-black/40 text-[10px] md:text-sm font-medium mt-2">Personal Session Required</p>
+              
+              <div className="mt-8 flex gap-3">
+                <Button 
+                  onClick={handleDownloadQR}
+                  className="rounded-xl h-12 px-6 bg-[#0A0A0B] text-white hover:bg-[#1A1A1B] flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Download for Print
+                </Button>
+              </div>
+              <p className="text-black/40 text-[10px] md:text-sm font-medium mt-4">Personal Session Required</p>
             </CardContent>
           </Card>
         </div>
@@ -115,14 +147,6 @@ export default function TerminalPage() {
         <span className="text-[8px] md:text-xs font-bold tracking-[0.2em] uppercase">Encrypted Logs</span>
         <span className="text-[8px] md:text-xs font-bold tracking-[0.2em] uppercase">GPS Fenced</span>
       </div>
-    </div>
-  );
-}
-
-function Badge({ className, children }: { className?: string; variant?: string; children: React.ReactNode }) {
-  return (
-    <div className={cn("inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2", className)}>
-      {children}
     </div>
   );
 }

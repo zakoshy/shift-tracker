@@ -81,8 +81,11 @@ export default function StaffRosterPage() {
 
   const { data: staff, loading: rosterLoading } = useCollection<UserProfile>(staffQuery);
 
+  // Hardened URL generation to prevent "expired/broken" links
   const inviteUrl = useMemo(() => {
-    if (typeof window === 'undefined' || !profile?.organizationId) return "";
+    if (typeof window === 'undefined' || !profile?.organizationId || profile.organizationId === 'undefined') {
+      return "";
+    }
     return `${window.location.origin}/join/${profile.organizationId}`;
   }, [profile?.organizationId]);
 
@@ -97,8 +100,7 @@ export default function StaffRosterPage() {
   const handleDeleteStaff = async (userId: string, name: string) => {
     const confirmDelete = window.confirm(
       `SECURITY ALERT: You are removing ${name} from the roster.\n\n` +
-      `Note: Their login account will NOT be deleted from the system (for security and audit reasons). ` +
-      `If you need to re-add them later, use the invite link or ensure their email is cleared in the Auth console.`
+      `Note: Their login account will NOT be deleted from the system (for security and audit reasons).`
     );
     if (!confirmDelete) return;
 
@@ -162,7 +164,7 @@ export default function StaffRosterPage() {
     } catch (error: any) {
       let message = error.message;
       if (error.code === 'auth/email-already-in-use') {
-        message = "This email already has an active login account. To re-add this person, please use the Invite Link and have them log in with their existing credentials.";
+        message = "This email already has an active login account. To re-add this person, please use the Invite Link.";
       }
       toast({ title: "Registration Halted", description: message, variant: "destructive" });
     } finally {
@@ -191,7 +193,7 @@ export default function StaffRosterPage() {
             </DialogHeader>
             <Tabs defaultValue="qr" className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6 bg-muted/50 p-1 rounded-xl">
-                <TabsTrigger value="qr" className="rounded-lg">Information Entry QR</TabsTrigger>
+                <TabsTrigger value="qr" className="rounded-lg">Enrollment QR</TabsTrigger>
                 <TabsTrigger value="manual" className="rounded-lg">Manual Entry</TabsTrigger>
               </TabsList>
               <TabsContent value="qr" className="space-y-6">
@@ -202,20 +204,23 @@ export default function StaffRosterPage() {
                         <QRCodeSVG value={inviteUrl} size={220} level="H" className="text-primary mb-6" />
                         <div className="flex items-center gap-2 text-primary font-bold">
                           <Fingerprint className="h-4 w-4" />
-                          <span className="text-[10px] uppercase tracking-widest">Secure Enrollment QR</span>
+                          <span className="text-[10px] uppercase tracking-widest">Enrollment Token</span>
                         </div>
                       </>
                     ) : (
-                      <div className="flex flex-col items-center gap-2">
+                      <div className="flex flex-col items-center gap-4 py-12">
                         <Loader2 className="h-10 w-10 text-primary animate-spin" />
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Generating...</span>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground text-center">
+                          Synchronizing Institutional ID...<br/>
+                          <span className="opacity-50">(Ensuring link safety)</span>
+                        </p>
                       </div>
                     )}
                   </div>
                   <div className="w-full space-y-2 text-center">
                     <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Registration URL</p>
                     <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl border font-mono text-xs break-all">
-                      <span className="flex-1 opacity-60">{inviteUrl || "Waiting for context..."}</span>
+                      <span className="flex-1 opacity-60">{inviteUrl || "Waiting for cloud sync..."}</span>
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleCopyLink} disabled={!inviteUrl}>
                         {copied ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                       </Button>
@@ -252,12 +257,6 @@ export default function StaffRosterPage() {
                   <div className="space-y-1">
                     <Label className="text-[10px] uppercase font-bold tracking-widest">Initial Password</Label>
                     <Input type="password" value={manualPassword} onChange={e => setManualPassword(e.target.value)} placeholder="••••••••" required className="rounded-xl h-11" />
-                  </div>
-                  <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-200 dark:border-amber-900/30 flex items-start gap-3">
-                    <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                    <p className="text-[10px] text-amber-800 dark:text-amber-200 leading-tight">
-                      Note: If this email was previously used, they already have an account. Use the invite link to re-add them to the roster.
-                    </p>
                   </div>
                   <Button className="w-full h-12 rounded-xl mt-2" type="submit" disabled={isCreating}>
                     {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Register Profile"}
@@ -351,12 +350,6 @@ export default function StaffRosterPage() {
                   <p className="text-[10px] font-bold uppercase opacity-60">Active Roster</p>
                   <p className="text-2xl font-black">{staff?.length || 0}</p>
                 </div>
-              </div>
-              <div className="p-4 bg-white/5 rounded-2xl border border-white/10 flex items-start gap-3">
-                <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-                <p className="text-[9px] leading-tight opacity-70">
-                  Deleting a profile removes roster access but keeps login records intact for security audits.
-                </p>
               </div>
             </CardContent>
           </Card>

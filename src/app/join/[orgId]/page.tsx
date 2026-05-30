@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Activity, Loader2, UserPlus, ShieldAlert, Eye, EyeOff, Building2, LogIn } from "lucide-react";
+import { Activity, Loader2, UserPlus, ShieldAlert, Eye, EyeOff, Building2, LogIn, AlertCircle } from "lucide-react";
 import { Organization } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -36,13 +36,16 @@ export default function JoinOrganizationPage() {
   useEffect(() => {
     async function fetchOrg() {
       if (!orgId || orgId === "undefined" || !db) {
-        setOrgLoading(false); return;
+        setOrgLoading(false); 
+        return;
       }
       try {
         const orgDoc = await getDoc(doc(db, "organizations", orgId));
         if (orgDoc.exists()) {
           setOrganization({ id: orgDoc.id, ...orgDoc.data() } as Organization);
         }
+      } catch (err) {
+        console.error("Failed to resolve organization:", err);
       } finally {
         setOrgLoading(false);
       }
@@ -74,7 +77,7 @@ export default function JoinOrganizationPage() {
       if (error.code === 'auth/email-already-in-use') {
         toast({ 
           title: "Account Already Exists", 
-          description: "This email is already registered. Please login instead, and your profile will be automatically re-synchronized if needed.",
+          description: "Please login with your existing credentials.",
           variant: "destructive"
         });
       } else {
@@ -94,16 +97,24 @@ export default function JoinOrganizationPage() {
     </div>
   );
 
-  if (!organization) return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md text-center p-12 shadow-2xl rounded-[2.5rem] border-none">
-        <ShieldAlert className="h-20 w-20 text-destructive mx-auto mb-8 opacity-20" />
-        <CardTitle className="text-3xl font-headline font-black mb-4">Invalid Link</CardTitle>
-        <CardDescription className="text-sm font-medium mb-10">This invite link is invalid or expired.</CardDescription>
-        <Link href="/"><Button className="w-full h-14 rounded-2xl font-bold">Return Home</Button></Link>
-      </Card>
-    </div>
-  );
+  if (!organization || orgId === "undefined") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md text-center p-12 shadow-2xl rounded-[2.5rem] border-none">
+          <div className="bg-destructive/10 h-20 w-20 rounded-3xl flex items-center justify-center mx-auto mb-8">
+            <ShieldAlert className="h-10 w-10 text-destructive" />
+          </div>
+          <CardTitle className="text-3xl font-headline font-black mb-4">Link Sync Error</CardTitle>
+          <CardDescription className="text-sm font-medium mb-10 leading-relaxed">
+            The link you scanned is incomplete or has not been fully synchronized with the cloud. 
+            <br/><br/>
+            <span className="text-destructive font-bold">Action Required:</span> Ask the administrator to wait 5 seconds before generating the QR code.
+          </CardDescription>
+          <Link href="/"><Button className="w-full h-14 rounded-2xl font-bold">Return Home</Button></Link>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4 py-16">
@@ -152,11 +163,6 @@ export default function JoinOrganizationPage() {
                 <Input type={showPassword ? "text" : "password"} placeholder="Min. 8 characters" value={password} onChange={e => setPassword(e.target.value)} required className="h-14 rounded-2xl pr-12" />
                 <Button type="button" variant="ghost" className="absolute right-0 top-0 h-full px-4" onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</Button>
               </div>
-            </div>
-            <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-200 dark:border-amber-900/30">
-              <p className="text-[10px] text-amber-800 dark:text-amber-200 leading-tight">
-                If you already have an account from a previous position, please log in directly. Your profile will be updated for this organization.
-              </p>
             </div>
             <Button className="w-full h-16 text-xl font-black rounded-3xl shadow-2xl mt-4" type="submit" disabled={loading}>
               {loading ? <Loader2 className="animate-spin h-6 w-6" /> : <><UserPlus className="mr-2 h-6 w-6" /> Join Workforce</>}
