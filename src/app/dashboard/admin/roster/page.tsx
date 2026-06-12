@@ -81,11 +81,12 @@ export default function StaffRosterPage() {
 
   const { data: staff, loading: rosterLoading } = useCollection<UserProfile>(staffQuery);
 
-  // Hardened URL generation
+  // Hardened URL generation with absolute pathing
   const inviteUrl = useMemo(() => {
     if (typeof window === 'undefined' || !profile?.organizationId || profile.organizationId === 'undefined') {
       return "";
     }
+    // Ensures the link is "strong" and fixed to the current deployment origin
     const origin = window.location.origin;
     return `${origin}/join/${profile.organizationId}`;
   }, [profile?.organizationId]);

@@ -17,7 +17,7 @@
 ### 📱 Hybrid Inclusion Protocol (Smartphone Optional)
 - **🔓 Total Workforce Digitalization**: While optimized for BYOD (Bring Your Own Device) QR clock-in, supervisors can manually override logs for staff without smartphones via the **Digital Security Ledger**. 
 - **⚖️ No Worker Left Behind**: Ensures 100% digital coverage of your workforce regardless of their personal technology, replacing messy paper sign-in books with a unified data stream.
-- **🔄 Multi-Account Sync**: Intelligent registration flow allows staff to easily switch between multiple accounts to ensure professional credentials are used.
+- **🔄 Multi-Identity Sync**: Intelligent registration flow allows staff to easily switch between multiple email accounts to ensure professional credentials are used.
 
 ### 🧠 AI-Driven Operational Synthesis
 - **⚡ Genkit & Gemini Integration**: The system automatically processes shift notes to identify critical themes, urgent clinical/operational issues, and staff well-being trends.
@@ -42,6 +42,6 @@
 
 ## 🤝 For Investors & Collaborators
 
-PulseLog is built with a **multi-tenant architecture** in mind, designed to scale from small clinics to massive logistics hubs. Our focus on **Digital Inclusion** and **Institutional Integrity** solves major pain points in blue-collar and clinical industries where personal device usage is inconsistent and data accuracy is paramount.
+PulseLog is built with a **multi-tenant architecture** in mind, designed to scale from small clinics to massive logistics hubs. Our focus on **Digital Inclusion** and **Institutional Integrity** solves major pain points in industries where device usage is inconsistent and data accuracy is paramount.
 
 Join us in building the future of workforce intelligence.

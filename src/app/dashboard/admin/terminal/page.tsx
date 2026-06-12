@@ -23,6 +23,7 @@ export default function TerminalPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // Hardened absolute URL resolution for the terminal token
   const terminalUrl = typeof window !== 'undefined' 
     ? `${window.location.origin}/dashboard/staff` 
     : "";
