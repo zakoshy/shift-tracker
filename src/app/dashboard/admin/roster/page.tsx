@@ -81,12 +81,13 @@ export default function StaffRosterPage() {
 
   const { data: staff, loading: rosterLoading } = useCollection<UserProfile>(staffQuery);
 
-  // Hardened URL generation to prevent "expired/broken" links
+  // Hardened URL generation
   const inviteUrl = useMemo(() => {
     if (typeof window === 'undefined' || !profile?.organizationId || profile.organizationId === 'undefined') {
       return "";
     }
-    return `${window.location.origin}/join/${profile.organizationId}`;
+    const origin = window.location.origin;
+    return `${origin}/join/${profile.organizationId}`;
   }, [profile?.organizationId]);
 
   const handleCopyLink = () => {
@@ -100,15 +101,15 @@ export default function StaffRosterPage() {
   const handleDeleteStaff = async (userId: string, name: string) => {
     const confirmDelete = window.confirm(
       `SECURITY ALERT: You are removing ${name} from the roster.\n\n` +
-      `Note: Their login account will NOT be deleted from the system (for security and audit reasons).`
+      `Note: Their login account will NOT be deleted from the system (for security reasons).`
     );
     if (!confirmDelete) return;
 
     try {
       await deleteDoc(doc(db, "users", userId));
-      toast({ title: "Personnel Removed", description: `${name} has been removed from the operational roster.` });
+      toast({ title: "Personnel Removed", description: `${name} has been removed.` });
     } catch (err) {
-      toast({ title: "Error", description: "Authorization failure during removal.", variant: "destructive" });
+      toast({ title: "Error", description: "Authorization failure.", variant: "destructive" });
     }
   };
 
@@ -126,7 +127,7 @@ export default function StaffRosterPage() {
       toast({ title: "Profile Secured", description: "Personnel data updated." });
       setEditingStaff(null);
     } catch (err) {
-      toast({ title: "Update Failed", description: "Data synchronization failure.", variant: "destructive" });
+      toast({ title: "Update Failed", description: "Synchronization failure.", variant: "destructive" });
     } finally {
       setIsUpdating(false);
     }
@@ -164,7 +165,7 @@ export default function StaffRosterPage() {
     } catch (error: any) {
       let message = error.message;
       if (error.code === 'auth/email-already-in-use') {
-        message = "This email already has an active login account. To re-add this person, please use the Invite Link.";
+        message = "This email already has an active account. Please use the Invite Link to re-add them.";
       }
       toast({ title: "Registration Halted", description: message, variant: "destructive" });
     } finally {
@@ -177,7 +178,7 @@ export default function StaffRosterPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6">
         <div>
           <h1 className="text-3xl font-headline font-extrabold text-foreground tracking-tight">Personnel Roster</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage institutional authorizations and shift reward parameters.</p>
+          <p className="text-sm text-muted-foreground mt-1">Manage institutional authorizations and shift parameters.</p>
         </div>
         <Dialog>
           <DialogTrigger asChild>
@@ -204,21 +205,21 @@ export default function StaffRosterPage() {
                         <QRCodeSVG value={inviteUrl} size={220} level="H" className="text-primary mb-6" />
                         <div className="flex items-center gap-2 text-primary font-bold">
                           <Fingerprint className="h-4 w-4" />
-                          <span className="text-[10px] uppercase tracking-widest">Enrollment Token</span>
+                          <span className="text-[10px] uppercase tracking-widest text-center leading-tight">Institutional Enrollment Token<br/><span className="opacity-40">(For Staff Data Entry Only)</span></span>
                         </div>
                       </>
                     ) : (
                       <div className="flex flex-col items-center gap-4 py-12">
                         <Loader2 className="h-10 w-10 text-primary animate-spin" />
                         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground text-center">
-                          Synchronizing Institutional ID...<br/>
+                          Synchronizing Cloud IDs...<br/>
                           <span className="opacity-50">(Ensuring link safety)</span>
                         </p>
                       </div>
                     )}
                   </div>
                   <div className="w-full space-y-2 text-center">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Registration URL</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Secure Enrollment URL</p>
                     <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl border font-mono text-xs break-all">
                       <span className="flex-1 opacity-60">{inviteUrl || "Waiting for cloud sync..."}</span>
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleCopyLink} disabled={!inviteUrl}>

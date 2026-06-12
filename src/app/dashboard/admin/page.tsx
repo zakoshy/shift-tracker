@@ -41,7 +41,8 @@ import {
   BookOpen,
   Zap,
   ShieldAlert,
-  Trash2
+  Trash2,
+  Edit2
 } from "lucide-react";
 import { format, subDays, parse } from "date-fns";
 import { AttendanceLog, UserProfile } from "@/lib/types";
@@ -71,14 +72,17 @@ export default function AdminDashboard() {
   const [updatingConfig, setUpdatingConfig] = useState(false);
   const { toast } = useToast();
 
-  // Manual Attendance State (Inclusion Protocol)
+  // Manual Attendance & Editing State
   const [manualOpen, setManualOpen] = useState(false);
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [manualTime, setManualTime] = useState(format(new Date(), "HH:mm"));
   const [manualType, setManualType] = useState<"in" | "out">("in");
   const [isLoggingManual, setIsLoggingManual] = useState(false);
+  
+  const [editingStaff, setEditingStaff] = useState<UserProfile | null>(null);
+  const [isUpdatingShift, setIsUpdatingShift] = useState(false);
 
-  // Memoize Query references to prevent infinite render loops and cache effectively
+  // Memoize Query references
   const staffQuery = useMemo(() => {
     if (!profile?.organizationId || !db) return null;
     return query(collection(db, "users"), where("organizationId", "==", profile.organizationId));
@@ -178,6 +182,24 @@ export default function AdminDashboard() {
       toast({ title: "Error", description: "Manual log failed.", variant: "destructive" });
     } finally {
       setIsLoggingManual(false);
+    }
+  };
+
+  const handleUpdateShift = async () => {
+    if (!editingStaff || !db || isUpdatingShift) return;
+    setIsUpdatingShift(true);
+    try {
+      await updateDoc(doc(db, "users", editingStaff.uid), {
+        shiftStart: editingStaff.shiftStart,
+        shiftEnd: editingStaff.shiftEnd,
+        department: editingStaff.department
+      });
+      toast({ title: "Shift Corrected", description: `Protocol updated for ${editingStaff.name}` });
+      setEditingStaff(null);
+    } catch (err) {
+      toast({ title: "Correction Failed", description: "Data sync error.", variant: "destructive" });
+    } finally {
+      setIsUpdatingShift(false);
     }
   };
 
@@ -580,75 +602,125 @@ export default function AdminDashboard() {
               <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">No active personnel logs for {format(new Date(), 'MMM do')}</p>
             </div>
           ) : (
-            logs.map((log) => (
-              <Card key={log.id} className={cn(
-                "group relative transition-all rounded-2xl border-none shadow-sm hover:shadow-md",
-                log.clockOutTime ? "bg-muted/30 opacity-70" : "bg-card ring-1 ring-primary/5"
-              )}>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => handleDeleteLog(log.id)}
-                  className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-                <CardHeader className="p-5 pb-0 flex flex-row items-center justify-between space-y-0">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-primary/5 text-primary flex items-center justify-center font-black text-sm border border-primary/10">
-                      {log.userName.charAt(0)}
-                    </div>
-                    <div>
-                      <CardTitle className="text-sm font-bold tracking-tight">{log.userName}</CardTitle>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">{log.userDepartment}</p>
-                    </div>
+            logs.map((log) => {
+              const staffMember = allStaff?.find(s => s.uid === log.userId);
+              return (
+                <Card key={log.id} className={cn(
+                  "group relative transition-all rounded-2xl border-none shadow-sm hover:shadow-md",
+                  log.clockOutTime ? "bg-muted/30 opacity-70" : "bg-card ring-1 ring-primary/5"
+                )}>
+                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => staffMember && setEditingStaff(staffMember)}
+                      className="h-7 w-7 text-primary hover:bg-primary/10 rounded-lg"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => handleDeleteLog(log.id)}
+                      className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    {log.status === 'late' && <Badge variant="destructive" className="text-[8px] h-4 uppercase">Late</Badge>}
-                    {organization?.overtimeEnabled && (log.overtimeMinutes || 0) > 0 && (
-                      <Badge className="bg-green-600 text-white text-[8px] h-4 uppercase">
-                        +{log.overtimeMinutes}m OT
-                      </Badge>
-                    )}
-                    {log.manualOverride && <Badge variant="outline" className="text-[8px] h-4 uppercase border-primary/20 text-primary bg-primary/5">Manual</Badge>}
-                  </div>
-                </CardHeader>
-                <CardContent className="p-5 pt-4 space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border">
-                    <div className="text-center">
-                      <p className="text-[8px] font-bold text-muted-foreground uppercase mb-1">In</p>
-                      <p className="text-xs font-mono font-bold">{log.clockInTime?.substring(0, 5) || '--:--'}</p>
+                  <CardHeader className="p-5 pb-0 flex flex-row items-center justify-between space-y-0">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-xl bg-primary/5 text-primary flex items-center justify-center font-black text-sm border border-primary/10">
+                        {log.userName.charAt(0)}
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm font-bold tracking-tight">{log.userName}</CardTitle>
+                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">{log.userDepartment}</p>
+                      </div>
                     </div>
-                    <div className="h-4 w-px bg-border" />
-                    <div className="text-center">
-                      <p className="text-[8px] font-bold text-muted-foreground uppercase mb-1">Out</p>
-                      <p className="text-xs font-mono font-bold">{log.clockOutTime?.substring(0, 5) || '--:--'}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      {log.clockOutTime ? (
-                        <div className="flex gap-0.5">
-                          {Array(log.moodRating || 0).fill(0).map((_, i) => (
-                            <div key={i} className="h-1.5 w-1.5 rounded-full bg-primary" />
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="flex items-center gap-2 text-[10px] font-bold text-green-600 uppercase tracking-widest">
-                          <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                          On-Site
-                        </span>
+                    <div className="flex flex-col items-end gap-1">
+                      {log.status === 'late' && <Badge variant="destructive" className="text-[8px] h-4 uppercase">Late</Badge>}
+                      {organization?.overtimeEnabled && (log.overtimeMinutes || 0) > 0 && (
+                        <Badge className="bg-green-600 text-white text-[8px] h-4 uppercase">
+                          +{log.overtimeMinutes}m OT
+                        </Badge>
                       )}
+                      {log.manualOverride && <Badge variant="outline" className="text-[8px] h-4 uppercase border-primary/20 text-primary bg-primary/5">Manual</Badge>}
                     </div>
-                    <Badge variant="ghost" className="text-[9px] uppercase opacity-40">Verified</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+                  </CardHeader>
+                  <CardContent className="p-5 pt-4 space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border">
+                      <div className="text-center">
+                        <p className="text-[8px] font-bold text-muted-foreground uppercase mb-1">In</p>
+                        <p className="text-xs font-mono font-bold">{log.clockInTime?.substring(0, 5) || '--:--'}</p>
+                      </div>
+                      <div className="h-4 w-px bg-border" />
+                      <div className="text-center">
+                        <p className="text-[8px] font-bold text-muted-foreground uppercase mb-1">Out</p>
+                        <p className="text-xs font-mono font-bold">{log.clockOutTime?.substring(0, 5) || '--:--'}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        {log.clockOutTime ? (
+                          <div className="flex gap-0.5">
+                            {Array(log.moodRating || 0).fill(0).map((_, i) => (
+                              <div key={i} className="h-1.5 w-1.5 rounded-full bg-primary" />
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="flex items-center gap-2 text-[10px] font-bold text-green-600 uppercase tracking-widest">
+                            <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                            On-Site
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Badge variant="ghost" className="text-[9px] uppercase opacity-40 px-0">Verified</Badge>
+                        <p className="text-[9px] font-mono text-muted-foreground opacity-60">({staffMember?.shiftStart}-{staffMember?.shiftEnd})</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })
           )}
         </div>
       </div>
+
+      <Dialog open={!!editingStaff} onOpenChange={(open) => !open && setEditingStaff(null)}>
+        <DialogContent className="sm:max-w-md rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-headline font-bold">Correct Shift Parameters</DialogTitle>
+            <DialogDescription>Adjust institutional shift windows for personnel already on-site.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-1">
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Personnel</Label>
+              <Input value={editingStaff?.name || ""} disabled className="rounded-xl h-11 opacity-50" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Start Time</Label>
+                <Input type="time" value={editingStaff?.shiftStart || "08:00"} onChange={e => setEditingStaff(p => p ? {...p, shiftStart: e.target.value} : null)} className="rounded-xl h-11" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">End Time</Label>
+                <Input type="time" value={editingStaff?.shiftEnd || "17:00"} onChange={e => setEditingStaff(p => p ? {...p, shiftEnd: e.target.value} : null)} className="rounded-xl h-11" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Department Correction</Label>
+              <Input value={editingStaff?.department || ""} onChange={e => setEditingStaff(p => p ? {...p, department: e.target.value} : null)} className="rounded-xl h-11" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleUpdateShift} disabled={isUpdatingShift} className="w-full h-11 rounded-xl">
+              {isUpdatingShift ? <Loader2 className="h-4 w-4 animate-spin" /> : "Authorize Correction"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
