@@ -50,7 +50,7 @@ import {
   BarChart3,
   LineChart
 } from "lucide-react";
-import { format, subDays, parse, isAfter, startOfDay } from "date-fns";
+import { format, subDays, parse, isAfter } from "date-fns";
 import { AttendanceLog, UserProfile } from "@/lib/types";
 import { summarizeHandoverNotes, SummarizeHandoverNotesOutput } from "@/ai/flows/summarize-handover-notes";
 import { useToast } from "@/hooks/use-toast";
@@ -102,10 +102,14 @@ export default function AdminDashboard() {
   const [editingStaff, setEditingStaff] = useState<UserProfile | null>(null);
   const [isUpdatingShift, setIsUpdatingShift] = useState(false);
 
-  // Memoize Query references
+  // Memoize Query references for optimized list operations
   const staffQuery = useMemo(() => {
     if (!profile?.organizationId || !db) return null;
-    return query(collection(db, "users"), where("organizationId", "==", profile.organizationId));
+    return query(
+      collection(db, "users"), 
+      where("organizationId", "==", profile.organizationId),
+      limit(500)
+    );
   }, [db, profile?.organizationId]);
 
   const { data: allStaff } = useCollection<UserProfile>(staffQuery);
@@ -116,7 +120,7 @@ export default function AdminDashboard() {
       collection(db, "attendance_logs"),
       where("organizationId", "==", profile.organizationId),
       orderBy("date", "desc"),
-      limit(200) // Increase limit for month analytics
+      limit(200)
     );
   }, [db, profile?.organizationId]);
 
@@ -128,7 +132,8 @@ export default function AdminDashboard() {
     return query(
       collection(db, "attendance_logs"),
       where("organizationId", "==", profile.organizationId),
-      where("date", "==", today)
+      where("date", "==", today),
+      limit(500)
     );
   }, [db, profile?.organizationId]);
 
@@ -139,7 +144,10 @@ export default function AdminDashboard() {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AttendanceLog[];
       setLogs(data);
       setLoading(false);
-    }, () => setLoading(false));
+    }, (err) => {
+      console.error("Live presence sync error:", err);
+      setLoading(false);
+    });
 
     return () => unsubscribe();
   }, [todayLogsQuery]);
@@ -529,7 +537,7 @@ export default function AdminDashboard() {
                       className="w-full h-10 rounded-xl"
                     >
                       {cleaningUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <History className="mr-2 h-4 w-4" />}
-                      Purge Legacy Logs (&gt;30 Days)
+                      Purge Legacy Logs {`(${">"}30 Days)`}
                     </Button>
                   </div>
                 </div>

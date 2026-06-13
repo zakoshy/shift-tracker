@@ -9,6 +9,7 @@ service cloud.firestore {
     }
 
     // Helper: Get the requesting user's profile data
+    // Optimized to ensure it can be resolved during list operations
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -18,65 +19,53 @@ service cloud.firestore {
       return isSignedIn() && getUserData().role == 'super-admin';
     }
 
-    // Helper: Check if the requesting user is an admin of a specific organization
-    function isOrgAdmin(orgId) {
-      let adminData = getUserData();
-      return isSignedIn() && 
-             adminData.role == 'admin' && 
-             adminData.organizationId == orgId;
-    }
-
-    // Helper: Check if an organization is suspended
-    function isNotSuspended(orgId) {
-      return get(/databases/$(database)/documents/organizations/$(orgId)).data.suspended != true;
-    }
-
     // Organizations
     match /organizations/{orgId} {
       allow create: if isSignedIn();
       allow read: if true; // Publicly readable for checkpoint verification
-      allow update, delete: if isSuperAdmin() || isOrgAdmin(orgId);
+      allow update, delete: if isSuperAdmin() || (isSignedIn() && getUserData().role == 'admin' && getUserData().organizationId == orgId);
     }
 
     // User Profiles
     match /users/{userId} {
       allow create: if isSignedIn();
-      allow read: if isSignedIn() && (
+      allow read, list: if isSignedIn() && (
         isSuperAdmin() || 
         request.auth.uid == userId || 
-        isOrgAdmin(resource.data.organizationId)
+        (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
       );
       allow update: if isSignedIn() && (isSuperAdmin() || request.auth.uid == userId);
-      allow delete: if isSuperAdmin() || (isSignedIn() && isOrgAdmin(getUserData().organizationId));
+      allow delete: if isSuperAdmin();
     }
 
     // Attendance Logs
     match /attendance_logs/{logId} {
-      allow list: if isSignedIn() && (
+      // Explicitly allow listing for the user themselves or their organization's admin
+      allow list, get: if isSignedIn() && (
         isSuperAdmin() ||
-        (request.query.limit <= 500 && resource.data.userId == request.auth.uid) ||
+        resource.data.userId == request.auth.uid ||
         (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
       );
-      allow get: if isSignedIn() && (
-        isSuperAdmin() ||
-        resource.data.userId == request.auth.uid || 
-        (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
-      );
+      
       allow create: if isSignedIn() && 
-                    request.resource.data.userId == request.auth.uid && 
-                    isNotSuspended(request.resource.data.organizationId);
-      allow update: if isSignedIn() && 
-                    resource.data.userId == request.auth.uid && 
-                    isNotSuspended(resource.data.organizationId);
-      allow delete: if isSuperAdmin() || (isSignedIn() && isOrgAdmin(getUserData().organizationId));
+                    request.resource.data.userId == request.auth.uid;
+                    
+      allow update: if isSignedIn() && (
+                    isSuperAdmin() ||
+                    resource.data.userId == request.auth.uid || 
+                    (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
+      );
+      
+      allow delete: if isSuperAdmin() || (isSignedIn() && getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId);
     }
 
     // Visitor Logs
     match /visitor_logs/{logId} {
       allow create: if true; // Publicly createable via checkpoint
-      allow read, list, delete: if isSignedIn() && (
+      allow read, list: if isSignedIn() && (
         isSuperAdmin() || (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
       );
+      allow delete: if isSuperAdmin();
     }
   }
 }
