@@ -2,53 +2,73 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper to check if the requesting user is a super admin
+    
+    // Helper: Check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper: Get the requesting user's profile data
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Helper: Check if the requesting user is a super admin
     function isSuperAdmin() {
-      return request.auth != null && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super-admin';
+      return isSignedIn() && getUserData().role == 'super-admin';
     }
 
-    // Helper to check if the requesting user is an admin of the given organization
-    function isAdmin(orgId) {
-      return request.auth != null && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
+    // Helper: Check if the requesting user is an admin of their organization
+    function isOrgAdmin(orgId) {
+      return isSignedIn() && 
+             getUserData().role == 'admin' && 
+             getUserData().organizationId == orgId;
     }
 
-    // Helper to check if an organization is suspended
+    // Helper: Check if an organization is suspended
     function isNotSuspended(orgId) {
       return get(/databases/$(database)/documents/organizations/$(orgId)).data.suspended != true;
     }
 
-    // Organizations: Super admins can do everything. Others can read their own or create.
+    // Organizations: Super admins can do everything. Authenticated users can read.
     match /organizations/{orgId} {
-      allow create: if request.auth != null;
-      allow read: if request.auth != null && (isSuperAdmin() || request.auth.uid != null);
-      allow update, delete: if isSuperAdmin() || isAdmin(orgId);
+      allow create: if isSignedIn();
+      allow read: if isSignedIn();
+      allow update, delete: if isSuperAdmin() || isOrgAdmin(orgId);
     }
 
-    // User Profiles: Super admins can do everything. Users can read/write their own.
+    // User Profiles: Super admins full access. Users can read/write their own. Admins can read their org's staff.
     match /users/{userId} {
-      allow create: if request.auth != null;
-      allow read: if request.auth != null && (
+      allow create: if isSignedIn();
+      allow read: if isSignedIn() && (
         isSuperAdmin() || 
         request.auth.uid == userId || 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && isAdmin(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId))
+        isOrgAdmin(resource.data.organizationId)
       );
-      allow update: if request.auth != null && (isSuperAdmin() || request.auth.uid == userId);
-      allow delete: if isSuperAdmin() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && isAdmin(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId));
+      allow update: if isSignedIn() && (isSuperAdmin() || request.auth.uid == userId);
+      allow delete: if isSuperAdmin() || (isSignedIn() && isOrgAdmin(getUserData().organizationId));
     }
 
-    // Attendance Logs: Staff can create/read/update their own if not suspended. Admins can read theirs.
+    // Attendance Logs: 
+    // 1. Staff can create/read/update their own if not suspended.
+    // 2. Admins can read/list logs for their specific organization.
+    // 3. Super admins have global access.
     match /attendance_logs/{logId} {
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid && isNotSuspended(request.resource.data.organizationId);
-      allow read: if request.auth != null && (
+      allow create: if isSignedIn() && 
+                    request.resource.data.userId == request.auth.uid && 
+                    isNotSuspended(request.resource.data.organizationId);
+      
+      allow read: if isSignedIn() && (
         isSuperAdmin() ||
         resource.data.userId == request.auth.uid || 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && isAdmin(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId))
+        (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
       );
-      allow update: if request.auth != null && resource.data.userId == request.auth.uid && isNotSuspended(resource.data.organizationId);
-      allow delete: if isSuperAdmin() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && isAdmin(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId));
+      
+      allow update: if isSignedIn() && 
+                    resource.data.userId == request.auth.uid && 
+                    isNotSuspended(resource.data.organizationId);
+      
+      allow delete: if isSuperAdmin() || (isSignedIn() && isOrgAdmin(resource.data.organizationId));
     }
   }
 }
