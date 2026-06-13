@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -36,8 +35,12 @@ export function useCollection<T = DocumentData>(query: Query<T> | null) {
         setLoading(false);
       },
       async (err) => {
-        // Robust path extraction for Firebase v11
-        const path = (query as any)?.path || (query as any)?._query?.path?.segments?.join('/') || 'collection-query';
+        // Robust path extraction for Firebase v11 Query objects
+        const queryInternal = (query as any);
+        const path = queryInternal.path || 
+                     queryInternal._query?.path?.segments?.join('/') || 
+                     queryInternal.ref?.path ||
+                     'attendance_logs';
         
         const permissionError = new FirestorePermissionError({
           path: path,
