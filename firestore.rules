@@ -9,16 +9,9 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function getProfile() {
+    // Direct access to user data to avoid circular helper dependencies
+    function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function isSuperAdmin() {
-      return isSignedIn() && getProfile().role == 'super-admin';
-    }
-
-    function isAdmin() {
-      return isSignedIn() && (getProfile().role == 'admin' || getProfile().role == 'super-admin');
     }
 
     // --- Organizations ---
@@ -26,7 +19,10 @@ service cloud.firestore {
     match /organizations/{orgId} {
       allow create: if isSignedIn();
       allow read: if true; // Publicly readable for checkpoint verification
-      allow update, delete: if isSuperAdmin() || (isAdmin() && getProfile().organizationId == orgId);
+      allow update, delete: if isSignedIn() && (
+        getUserData().role == 'super-admin' || 
+        (getUserData().role == 'admin' && getUserData().organizationId == orgId)
+      );
     }
 
     // --- User Profiles ---
@@ -34,22 +30,23 @@ service cloud.firestore {
     match /users/{userId} {
       allow create: if isSignedIn();
       
-      // Get: Individual access or Admin/Super-Admin oversight
+      // Get: Individual access (Directly check UID to avoid circularity)
+      // or Admin/Super-Admin oversight
       allow get: if isSignedIn() && (
         request.auth.uid == userId || 
-        isSuperAdmin() || 
-        (getProfile().role == 'admin' && resource.data.organizationId == getProfile().organizationId)
+        getUserData().role == 'super-admin' || 
+        (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
       );
       
-      // List: Queries MUST filter by organizationId if not a Super Admin
+      // List: Queries MUST filter by organizationId or userId to match permissions
       allow list: if isSignedIn() && (
-        isSuperAdmin() || 
+        getUserData().role == 'super-admin' || 
         (request.query.filters.userId == request.auth.uid) ||
-        (getProfile().role == 'admin' && request.query.filters.organizationId == getProfile().organizationId)
+        (getUserData().role == 'admin' && request.query.filters.organizationId == getUserData().organizationId)
       );
 
-      allow update: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
-      allow delete: if isSuperAdmin();
+      allow update: if isSignedIn() && (request.auth.uid == userId || getUserData().role == 'super-admin');
+      allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
 
     // --- Attendance Logs ---
@@ -57,39 +54,41 @@ service cloud.firestore {
     match /attendance_logs/{logId} {
       // Get: Individual access, Org Admin, or Super Admin
       allow get: if isSignedIn() && (
-        isSuperAdmin() ||
+        getUserData().role == 'super-admin' ||
         resource.data.userId == request.auth.uid ||
-        resource.data.organizationId == getProfile().organizationId
+        resource.data.organizationId == getUserData().organizationId
       );
 
       // List: Queries MUST filter by organizationId or userId to match permissions
       allow list: if isSignedIn() && (
-        isSuperAdmin() ||
+        getUserData().role == 'super-admin' ||
         (request.query.filters.userId == request.auth.uid) ||
-        (getProfile().role == 'admin' && request.query.filters.organizationId == getProfile().organizationId)
+        (getUserData().role == 'admin' && request.query.filters.organizationId == getUserData().organizationId)
       );
       
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
                     
       allow update: if isSignedIn() && (
-        isSuperAdmin() ||
+        getUserData().role == 'super-admin' ||
         resource.data.userId == request.auth.uid || 
-        (getProfile().role == 'admin' && resource.data.organizationId == getProfile().organizationId)
+        (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
       );
       
-      allow delete: if isAdmin();
+      allow delete: if isSignedIn() && (getUserData().role == 'admin' || getUserData().role == 'super-admin');
     }
 
     // --- Visitor Logs ---
     
     match /visitor_logs/{logId} {
-      // Security: Public creation is allowed, but we validate the data structure
       allow create: if request.resource.data.name != null 
                     && request.resource.data.phone != null
                     && request.resource.data.organizationId != null;
                     
-      allow read, list: if isSuperAdmin() || (isAdmin() && resource.data.organizationId == getProfile().organizationId);
-      allow delete: if isSuperAdmin();
+      allow read, list: if isSignedIn() && (
+        getUserData().role == 'super-admin' || 
+        (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
+      );
+      allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
   }
 }
