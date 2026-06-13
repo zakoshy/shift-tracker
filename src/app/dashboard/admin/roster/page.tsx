@@ -55,7 +55,7 @@ import { useToast } from "@/hooks/use-toast";
 import { QRCodeSVG } from "qrcode.react";
 
 export default function StaffRosterPage() {
-  const { profile, organization } = usePulseLogAuth();
+  const { profile, organization, loading: authLoading } = usePulseLogAuth();
   const db = useFirestore();
   const { toast } = useToast();
   
@@ -81,15 +81,15 @@ export default function StaffRosterPage() {
 
   const { data: staff, loading: rosterLoading } = useCollection<UserProfile>(staffQuery);
 
-  // Hardened URL generation with absolute pathing
+  // Hardened URL generation with absolute pathing and loading guard
   const inviteUrl = useMemo(() => {
-    if (typeof window === 'undefined' || !profile?.organizationId || profile.organizationId === 'undefined') {
+    if (authLoading || !profile?.organizationId || profile.organizationId === 'undefined') {
       return "";
     }
-    // Ensures the link is "strong" and fixed to the current deployment origin
-    const origin = window.location.origin;
+    const origin = typeof window !== 'undefined' ? window.location.origin : "";
+    if (!origin) return "";
     return `${origin}/join/${profile.organizationId}`;
-  }, [profile?.organizationId]);
+  }, [profile?.organizationId, authLoading]);
 
   const handleCopyLink = () => {
     if (!inviteUrl) return;

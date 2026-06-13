@@ -529,7 +529,7 @@ export default function AdminDashboard() {
                       className="w-full h-10 rounded-xl"
                     >
                       {cleaningUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <History className="mr-2 h-4 w-4" />}
-                      Purge Legacy Logs (>30 Days)
+                      Purge Legacy Logs (&gt;30 Days)
                     </Button>
                   </div>
                 </div>
