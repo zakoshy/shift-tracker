@@ -48,3 +48,13 @@ export interface AttendanceLog {
     lng: number;
   };
 }
+
+export interface VisitorLog {
+  id: string;
+  organizationId: string;
+  name: string;
+  phone: string;
+  reason: string;
+  vehiclePlate?: string;
+  entryTime: string;
+}

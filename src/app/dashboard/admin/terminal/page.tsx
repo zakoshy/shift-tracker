@@ -23,9 +23,9 @@ export default function TerminalPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Hardened absolute URL resolution for the terminal token
-  const terminalUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/dashboard/staff` 
+  // Public Checkpoint Router for Visitors and Staff
+  const terminalUrl = typeof window !== 'undefined' && organization?.id
+    ? `${window.location.origin}/checkpoint/${organization.id}` 
     : "";
 
   const hasLocation = !!(organization?.latitude && organization?.longitude);
@@ -115,14 +115,20 @@ export default function TerminalPage() {
           <Card className="p-6 md:p-12 bg-white rounded-[2rem] md:rounded-[3rem] shadow-[0_0_80px_rgba(41,85,178,0.2)] border-none w-full max-w-sm md:max-w-none">
             <CardContent className="p-0 flex flex-col items-center">
               <div className="bg-white p-2 md:p-4 rounded-2xl">
-                <QRCodeCanvas 
-                  ref={qrRef}
-                  value={terminalUrl} 
-                  size={320} 
-                  level="H" 
-                  includeMargin={true}
-                  className="text-black w-full max-w-[200px] md:max-w-full h-auto"
-                />
+                {terminalUrl ? (
+                  <QRCodeCanvas 
+                    ref={qrRef}
+                    value={terminalUrl} 
+                    size={320} 
+                    level="H" 
+                    includeMargin={true}
+                    className="text-black w-full max-w-[200px] md:max-w-full h-auto"
+                  />
+                ) : (
+                  <div className="h-[320px] w-[320px] flex items-center justify-center">
+                    <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                  </div>
+                )}
               </div>
               <p className="mt-6 md:mt-8 text-black font-bold text-sm md:text-xl uppercase tracking-widest text-center">
                 Scan to Verify Presence

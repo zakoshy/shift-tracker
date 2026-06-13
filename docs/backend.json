@@ -53,6 +53,21 @@
         "overtimeMinutes": { "type": "integer" }
       },
       "required": ["id", "userId", "organizationId", "date"]
+    },
+    "VisitorLog": {
+      "title": "Visitor Log",
+      "description": "Record of non-staff visitors entering the facility.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "organizationId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "reason": { "type": "string" },
+        "vehiclePlate": { "type": "string" },
+        "entryTime": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "organizationId", "name", "phone", "reason", "entryTime"]
     }
   },
   "auth": {
@@ -70,6 +85,10 @@
     "/attendance_logs/{logId}": {
       "schema": { "$ref": "#/entities/AttendanceLog" },
       "description": "Stores daily shift attendance and operational intelligence."
+    },
+    "/visitor_logs/{logId}": {
+      "schema": { "$ref": "#/entities/VisitorLog" },
+      "description": "Stores visitor entry records."
     }
   }
 }

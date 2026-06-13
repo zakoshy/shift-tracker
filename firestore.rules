@@ -31,10 +31,10 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/organizations/$(orgId)).data.suspended != true;
     }
 
-    // Organizations: Super admins full access. Authenticated users can read.
+    // Organizations
     match /organizations/{orgId} {
       allow create: if isSignedIn();
-      allow read: if isSignedIn();
+      allow read: if true; // Publicly readable for checkpoint verification
       allow update, delete: if isSuperAdmin() || isOrgAdmin(orgId);
     }
 
@@ -50,32 +50,33 @@ service cloud.firestore {
       allow delete: if isSuperAdmin() || (isSignedIn() && isOrgAdmin(getUserData().organizationId));
     }
 
-    // Attendance Logs: Hardened for 'list' operations
+    // Attendance Logs
     match /attendance_logs/{logId} {
-      
-      // Allow listing logs if the query is restricted to the user's own data OR their organization's data (for admins)
       allow list: if isSignedIn() && (
         isSuperAdmin() ||
         (request.query.limit <= 500 && resource.data.userId == request.auth.uid) ||
         (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
       );
-
-      // Allow getting a single document
       allow get: if isSignedIn() && (
         isSuperAdmin() ||
         resource.data.userId == request.auth.uid || 
         (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
       );
-
       allow create: if isSignedIn() && 
                     request.resource.data.userId == request.auth.uid && 
                     isNotSuspended(request.resource.data.organizationId);
-      
       allow update: if isSignedIn() && 
                     resource.data.userId == request.auth.uid && 
                     isNotSuspended(resource.data.organizationId);
-      
       allow delete: if isSuperAdmin() || (isSignedIn() && isOrgAdmin(getUserData().organizationId));
+    }
+
+    // Visitor Logs
+    match /visitor_logs/{logId} {
+      allow create: if true; // Publicly createable via checkpoint
+      allow read, list, delete: if isSignedIn() && (
+        isSuperAdmin() || (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
+      );
     }
   }
 }
