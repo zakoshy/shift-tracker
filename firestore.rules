@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -43,6 +44,7 @@ service cloud.firestore {
       // List: Queries MUST filter by organizationId if not a Super Admin
       allow list: if isSignedIn() && (
         isSuperAdmin() || 
+        (request.query.filters.userId == request.auth.uid) ||
         (getProfile().role == 'admin' && request.query.filters.organizationId == getProfile().organizationId)
       );
 
@@ -81,7 +83,11 @@ service cloud.firestore {
     // --- Visitor Logs ---
     
     match /visitor_logs/{logId} {
-      allow create: if true; // Publicly createable via checkpoint
+      // Security: Public creation is allowed, but we validate the data structure
+      allow create: if request.resource.data.name != null 
+                    && request.resource.data.phone != null
+                    && request.resource.data.organizationId != null;
+                    
       allow read, list: if isSuperAdmin() || (isAdmin() && resource.data.organizationId == getProfile().organizationId);
       allow delete: if isSuperAdmin();
     }

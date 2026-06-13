@@ -1,33 +1,145 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo, memo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { useFirestore, useDoc } from "@/firebase";
-import { doc, setDoc, collection, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, collection } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Activity, 
   Loader2, 
-  MapPin, 
   ShieldCheck, 
   UserCircle, 
   Car, 
   Phone, 
   MessageSquare,
   AlertCircle,
-  Clock,
-  ArrowRight
+  ArrowRight,
+  Bike
 } from "lucide-react";
-import { Organization } from "@/lib/types";
+import { Organization, VehicleType } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
 import Link from "next/link";
+
+/**
+ * Memoized Visitor Form component to prevent full page reloads 
+ * and input stuttering during state updates.
+ */
+const VisitorForm = memo(({ organizationId, onSubmit, isSubmitting }: { 
+  organizationId: string, 
+  onSubmit: (data: any) => Promise<void>,
+  isSubmitting: boolean 
+}) => {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [reason, setReason] = useState("");
+  const [plate, setPlate] = useState("");
+  const [vehicleType, setVehicleType] = useState<VehicleType>("None");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit({ name, phone, reason, vehiclePlate: plate, vehicleType });
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <CardContent className="p-8 space-y-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase font-black tracking-widest ml-1">Full Name</Label>
+            <Input 
+              placeholder="Enter name" 
+              value={name} 
+              onChange={e => setName(e.target.value)} 
+              required 
+              className="h-12 rounded-xl"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase font-black tracking-widest ml-1">Phone (Kenya Format)</Label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="07XX XXX XXX" 
+                value={phone} 
+                onChange={e => setPhone(e.target.value)} 
+                required 
+                className="h-12 rounded-xl pl-10"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-[10px] uppercase font-black tracking-widest ml-1">Reason for Visit</Label>
+          <div className="relative">
+            <MessageSquare className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="e.g., Delivery, Meeting, Consultation" 
+              value={reason} 
+              onChange={e => setReason(e.target.value)} 
+              required 
+              className="h-12 rounded-xl pl-10"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase font-black tracking-widest ml-1">Vehicle Type</Label>
+            <Select onValueChange={(v) => setVehicleType(v as VehicleType)} defaultValue="None">
+              <SelectTrigger className="h-12 rounded-xl">
+                <SelectValue placeholder="Select vehicle" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="None">No Vehicle (Pedestrian)</SelectItem>
+                <SelectItem value="Car">Car</SelectItem>
+                <SelectItem value="Motorcycle">Motorcycle / Boda Boda</SelectItem>
+                <SelectItem value="Tuktuk">Tuktuk</SelectItem>
+                <SelectItem value="Truck">Truck / Van</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase font-black tracking-widest ml-1">Vehicle Plate (Optional)</Label>
+            <div className="relative">
+              <Car className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="KXX 000X" 
+                value={plate} 
+                onChange={e => setPlate(e.target.value)} 
+                className="h-12 rounded-xl pl-10"
+              />
+            </div>
+          </div>
+        </div>
+      </CardContent>
+      <CardFooter className="p-8 pt-0 flex flex-col gap-4">
+        <Button 
+          type="submit" 
+          disabled={isSubmitting} 
+          className="w-full h-14 rounded-2xl text-lg font-bold shadow-xl bg-[#002B5B] hover:bg-[#002B5B]/90"
+        >
+          {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : "Authorize Entry"}
+        </Button>
+        <div className="text-center">
+          <Link href="/login" className="text-xs font-bold text-primary hover:underline flex items-center justify-center gap-2">
+            <ShieldCheck className="h-4 w-4" />
+            Institutional Staff Login
+          </Link>
+        </div>
+      </CardFooter>
+    </form>
+  );
+});
+
+VisitorForm.displayName = "VisitorForm";
 
 export default function CheckpointPage() {
   const params = useParams();
@@ -36,21 +148,15 @@ export default function CheckpointPage() {
   const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
-
-  const [visitorName, setVisitorName] = useState("");
-  const [visitorPhone, setVisitorPhone] = useState("");
-  const [visitorReason, setVisitorReason] = useState("");
-  const [visitorPlate, setVisitorPlate] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch organization if not already available from auth hook
-  const orgRef = doc(db, "organizations", orgId);
+  // Fetch organization if not already available
+  const orgRef = useMemo(() => orgId ? doc(db, "organizations", orgId) : null, [db, orgId]);
   const { data: checkpointOrg, loading: orgLoading } = useDoc<Organization>(orgRef);
 
   const displayOrg = organization || checkpointOrg;
 
-  const handleVisitorSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleVisitorSubmit = async (data: any) => {
     if (!displayOrg || isSubmitting) return;
 
     setIsSubmitting(true);
@@ -59,15 +165,12 @@ export default function CheckpointPage() {
       await setDoc(newLogRef, {
         id: newLogRef.id,
         organizationId: displayOrg.id,
-        name: visitorName,
-        phone: visitorPhone,
-        reason: visitorReason,
-        vehiclePlate: visitorPlate,
+        ...data,
         entryTime: new Date().toISOString()
       });
       toast({ title: "Access Granted", description: "Visitor protocol documented. Welcome." });
-      // Clear form
-      setVisitorName(""); setVisitorPhone(""); setVisitorReason(""); setVisitorPlate("");
+      // Clear form via redirect or just stay
+      router.refresh();
     } catch (err) {
       toast({ title: "Sync Error", description: "Failed to log visitor access.", variant: "destructive" });
     } finally {
@@ -75,7 +178,7 @@ export default function CheckpointPage() {
     }
   };
 
-  if (authLoading || orgLoading) {
+  if (orgLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-10 w-10 text-primary animate-spin" />
@@ -96,7 +199,8 @@ export default function CheckpointPage() {
     );
   }
 
-  const isStaffMember = profile?.organizationId === displayOrg.id;
+  // We only show "Staff recognized" if auth is NOT loading and user IS a member
+  const isStaffMember = !authLoading && profile?.organizationId === displayOrg.id;
 
   return (
     <div className="min-h-screen bg-muted/30 flex flex-col items-center justify-center p-4 md:p-8">
@@ -141,77 +245,11 @@ export default function CheckpointPage() {
               <CardTitle className="text-2xl font-bold">Visitor Access Protocol</CardTitle>
               <CardDescription>Documentation required for facility entry.</CardDescription>
             </CardHeader>
-            <form onSubmit={handleVisitorSubmit}>
-              <CardContent className="p-8 space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] uppercase font-black tracking-widest ml-1">Full Name</Label>
-                    <Input 
-                      placeholder="Enter name" 
-                      value={visitorName} 
-                      onChange={e => setVisitorName(e.target.value)} 
-                      required 
-                      className="h-12 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] uppercase font-black tracking-widest ml-1">Phone Number</Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
-                      <Input 
-                        placeholder="000-000-0000" 
-                        value={visitorPhone} 
-                        onChange={e => setVisitorPhone(e.target.value)} 
-                        required 
-                        className="h-12 rounded-xl pl-10"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] uppercase font-black tracking-widest ml-1">Reason for Visit</Label>
-                  <div className="relative">
-                    <MessageSquare className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      placeholder="e.g., Delivery, Meeting, Consultation" 
-                      value={visitorReason} 
-                      onChange={e => setVisitorReason(e.target.value)} 
-                      required 
-                      className="h-12 rounded-xl pl-10"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] uppercase font-black tracking-widest ml-1">Vehicle Plate (Optional)</Label>
-                  <div className="relative">
-                    <Car className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      placeholder="ABC-1234" 
-                      value={visitorPlate} 
-                      onChange={e => setVisitorPlate(e.target.value)} 
-                      className="h-12 rounded-xl pl-10"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter className="p-8 pt-0 flex flex-col gap-4">
-                <Button 
-                  type="submit" 
-                  disabled={isSubmitting} 
-                  className="w-full h-14 rounded-2xl text-lg font-bold shadow-xl bg-[#002B5B] hover:bg-[#002B5B]/90"
-                >
-                  {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : "Authorize Entry"}
-                </Button>
-                <div className="text-center">
-                  <Link href="/login" className="text-xs font-bold text-primary hover:underline flex items-center justify-center gap-2">
-                    <ShieldCheck className="h-4 w-4" />
-                    Institutional Staff Login
-                  </Link>
-                </div>
-              </CardFooter>
-            </form>
+            <VisitorForm 
+              organizationId={displayOrg.id} 
+              onSubmit={handleVisitorSubmit} 
+              isSubmitting={isSubmitting} 
+            />
           </Card>
         )}
 

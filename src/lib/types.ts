@@ -2,6 +2,7 @@
 export type UserRole = 'admin' | 'staff' | 'super-admin';
 export type AttendanceStatus = 'on-time' | 'late' | 'early-departure' | 'present' | 'overtime';
 export type MoodRating = 1 | 2 | 3; // 1: Stressed, 2: Hectic, 3: Smooth
+export type VehicleType = 'None' | 'Car' | 'Motorcycle' | 'Tuktuk' | 'Truck';
 
 export interface Organization {
   id: string;
@@ -55,6 +56,7 @@ export interface VisitorLog {
   name: string;
   phone: string;
   reason: string;
+  vehicleType?: VehicleType;
   vehiclePlate?: string;
   entryTime: string;
 }

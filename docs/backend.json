@@ -64,6 +64,7 @@
         "name": { "type": "string" },
         "phone": { "type": "string" },
         "reason": { "type": "string" },
+        "vehicleType": { "type": "string", "enum": ["None", "Car", "Motorcycle", "Tuktuk", "Truck"] },
         "vehiclePlate": { "type": "string" },
         "entryTime": { "type": "string", "format": "date-time" }
       },
