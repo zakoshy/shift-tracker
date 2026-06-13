@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Users, 
@@ -46,9 +46,11 @@ import {
   Trash2,
   Edit2,
   Search,
-  ArrowRight
+  ArrowRight,
+  BarChart3,
+  LineChart
 } from "lucide-react";
-import { format, subDays, parse, isAfter } from "date-fns";
+import { format, subDays, parse, isAfter, startOfDay } from "date-fns";
 import { AttendanceLog, UserProfile } from "@/lib/types";
 import { summarizeHandoverNotes, SummarizeHandoverNotesOutput } from "@/ai/flows/summarize-handover-notes";
 import { useToast } from "@/hooks/use-toast";
@@ -63,6 +65,19 @@ import {
   DialogTrigger,
   DialogFooter
 } from "@/components/ui/dialog";
+import {
+  Bar,
+  BarChart,
+  Line,
+  LineChart as RechartsLineChart,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Legend,
+  Cell
+} from "recharts";
 
 export default function AdminDashboard() {
   const { profile, organization } = usePulseLogAuth();
@@ -101,7 +116,7 @@ export default function AdminDashboard() {
       collection(db, "attendance_logs"),
       where("organizationId", "==", profile.organizationId),
       orderBy("date", "desc"),
-      limit(100)
+      limit(200) // Increase limit for month analytics
     );
   }, [db, profile?.organizationId]);
 
@@ -147,6 +162,47 @@ export default function AdminDashboard() {
       log.userDepartment.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [historyLogs, searchTerm]);
+
+  // Analytics Data Preparation
+  const analyticsData = useMemo(() => {
+    if (!historyLogs || historyLogs.length === 0) return { attendance: [], mood: [], overtime: [] };
+
+    const dailyStats: Record<string, { date: string, present: number, late: number, moodTotal: number, moodCount: number, overtime: number }> = {};
+    
+    // Process last 30 days
+    const last30Days = Array.from({ length: 30 }, (_, i) => format(subDays(new Date(), i), 'yyyy-MM-dd')).reverse();
+    last30Days.forEach(d => {
+      dailyStats[d] = { date: d, present: 0, late: 0, moodTotal: 0, moodCount: 0, overtime: 0 };
+    });
+
+    historyLogs.forEach(log => {
+      if (dailyStats[log.date]) {
+        dailyStats[log.date].present += 1;
+        if (log.status === 'late') dailyStats[log.date].late += 1;
+        if (log.moodRating) {
+          dailyStats[log.date].moodTotal += log.moodRating;
+          dailyStats[log.date].moodCount += 1;
+        }
+        dailyStats[log.date].overtime += (log.overtimeMinutes || 0);
+      }
+    });
+
+    return {
+      attendance: Object.values(dailyStats).map(d => ({
+        date: format(parse(d.date, 'yyyy-MM-dd', new Date()), 'MMM dd'),
+        present: d.present,
+        late: d.late
+      })),
+      mood: Object.values(dailyStats).map(d => ({
+        date: format(parse(d.date, 'yyyy-MM-dd', new Date()), 'MMM dd'),
+        avgMood: d.moodCount > 0 ? parseFloat((d.moodTotal / d.moodCount).toFixed(2)) : null
+      })).filter(d => d.avgMood !== null),
+      overtime: Object.values(dailyStats).map(d => ({
+        date: format(parse(d.date, 'yyyy-MM-dd', new Date()), 'MMM dd'),
+        minutes: d.overtime
+      })).filter(d => d.minutes > 0)
+    };
+  }, [historyLogs]);
 
   const handleManualAttendance = async () => {
     if (!selectedStaffId || !db || !profile?.organizationId || isLoggingManual) return;
@@ -618,6 +674,10 @@ export default function AdminDashboard() {
               <History className="h-4 w-4" />
               Full History (30 Days)
             </TabsTrigger>
+            <TabsTrigger value="analytics" className="rounded-lg px-6 flex items-center gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Performance Analytics
+            </TabsTrigger>
           </TabsList>
           
           <div className="relative w-full md:w-64">
@@ -793,6 +853,124 @@ export default function AdminDashboard() {
               </div>
             </div>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="analytics" className="m-0">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-[2.5rem] border-none shadow-sm bg-card p-6 md:p-8">
+              <CardHeader className="px-0 pt-0">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-primary/10 rounded-xl">
+                    <LineChart className="h-5 w-5 text-primary" />
+                  </div>
+                  <CardTitle className="text-xl font-bold">Attendance Velocity</CardTitle>
+                </div>
+                <CardDescription>Daily present vs. late arrivals (Last 30 Days)</CardDescription>
+              </CardHeader>
+              <div className="h-[300px] w-full mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsLineChart data={analyticsData.attendance}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
+                    <XAxis 
+                      dataKey="date" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                      minTickGap={30}
+                    />
+                    <YAxis 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '12px', border: '1px solid hsl(var(--border))' }}
+                      itemStyle={{ fontSize: 12, fontWeight: 'bold' }}
+                    />
+                    <Legend iconType="circle" wrapperStyle={{ paddingTop: 20 }} />
+                    <Line type="monotone" dataKey="present" stroke="hsl(var(--primary))" strokeWidth={3} dot={false} activeDot={{ r: 6 }} name="Total Presence" />
+                    <Line type="monotone" dataKey="late" stroke="hsl(var(--destructive))" strokeWidth={3} dot={false} activeDot={{ r: 6 }} name="Late Arrivals" />
+                  </RechartsLineChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+
+            <Card className="rounded-[2.5rem] border-none shadow-sm bg-card p-6 md:p-8">
+              <CardHeader className="px-0 pt-0">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-amber-100 rounded-xl">
+                    <Smile className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <CardTitle className="text-xl font-bold">Morale Consistency</CardTitle>
+                </div>
+                <CardDescription>Average mood rating (1.0 - 3.0 scale)</CardDescription>
+              </CardHeader>
+              <div className="h-[300px] w-full mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsLineChart data={analyticsData.mood}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
+                    <XAxis 
+                      dataKey="date" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                      minTickGap={30}
+                    />
+                    <YAxis 
+                      domain={[1, 3]}
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '12px', border: '1px solid hsl(var(--border))' }}
+                    />
+                    <Line type="stepAfter" dataKey="avgMood" stroke="hsl(var(--accent))" strokeWidth={4} dot={{ r: 4, fill: 'hsl(var(--accent))' }} name="Avg Mood" />
+                  </RechartsLineChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+
+            <Card className="rounded-[2.5rem] border-none shadow-sm bg-card p-6 md:p-8 lg:col-span-2">
+              <CardHeader className="px-0 pt-0">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-green-100 rounded-xl">
+                    <TrendingUp className="h-5 w-5 text-green-600" />
+                  </div>
+                  <CardTitle className="text-xl font-bold">Overtime Heatmap</CardTitle>
+                </div>
+                <CardDescription>Aggregate overtime minutes per day</CardDescription>
+              </CardHeader>
+              <div className="h-[300px] w-full mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={analyticsData.overtime}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
+                    <XAxis 
+                      dataKey="date" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                      minTickGap={20}
+                    />
+                    <YAxis 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <Tooltip 
+                      cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
+                      contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '12px', border: '1px solid hsl(var(--border))' }}
+                    />
+                    <Bar dataKey="minutes" name="Minutes" radius={[6, 6, 0, 0]}>
+                      {analyticsData.overtime.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.minutes > 60 ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
 
