@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -47,9 +46,10 @@ import {
   Trash2,
   Edit2,
   Filter,
-  Search
+  Search,
+  ArrowRight
 } from "lucide-react";
-import { format, subDays, parse } from "date-fns";
+import { format, subDays, parse, isAfter } from "date-fns";
 import { AttendanceLog, UserProfile } from "@/lib/types";
 import { summarizeHandoverNotes, SummarizeHandoverNotesOutput } from "@/ai/flows/summarize-handover-notes";
 import { useToast } from "@/hooks/use-toast";
@@ -103,7 +103,7 @@ export default function AdminDashboard() {
       collection(db, "attendance_logs"),
       where("organizationId", "==", profile.organizationId),
       orderBy("date", "desc"),
-      limit(50)
+      limit(100)
     );
   }, [db, profile?.organizationId]);
 
@@ -164,7 +164,7 @@ export default function AdminDashboard() {
 
     try {
       if (manualType === "in") {
-        const existingIn = logs.find(l => l.userId === selectedStaffId);
+        const existingIn = logs.find(l => l.userId === selectedStaffId && !l.clockOutTime);
         if (existingIn) {
           toast({ title: "Protocol Violation", description: "Personnel is already logged in for today.", variant: "destructive" });
           setIsLoggingManual(false);
@@ -173,10 +173,10 @@ export default function AdminDashboard() {
 
         const startThreshold = parse(staffMember.shiftStart || "08:00", 'HH:mm', new Date());
         const actualIn = parse(manualTime, 'HH:mm', new Date());
-        const status = actualIn > startThreshold ? 'late' : 'on-time';
+        const status = isAfter(actualIn, startThreshold) ? 'late' : 'on-time';
 
         const newLogRef = doc(collection(db, "attendance_logs"));
-        setDoc(newLogRef, {
+        await setDoc(newLogRef, {
           id: newLogRef.id,
           userId: staffMember.uid,
           userName: staffMember.name,
@@ -197,9 +197,10 @@ export default function AdminDashboard() {
           setIsLoggingManual(false);
           return;
         }
-        updateDoc(doc(db, "attendance_logs", existingLog.id), {
+        await updateDoc(doc(db, "attendance_logs", existingLog.id), {
           clockOutTime: timeStr,
-          manualOverride: true
+          manualOverride: true,
+          status: 'present' // Or recalculate status if needed
         });
         toast({ title: "Departure Logged", description: `Supervisor override for ${staffMember.name}` });
       }
@@ -293,7 +294,7 @@ export default function AdminDashboard() {
 
   const handleCleanupOldLogs = async () => {
     if (!db || !profile?.organizationId || cleaningUp) return;
-    const confirmCleanup = window.confirm("CAUTION: This will permanently delete records older than 30 days. Proceed?");
+    const confirmCleanup = window.confirm("CAUTION: PulseLog Retention Protocol. This will permanently delete records older than 30 days to maintain system integrity. Proceed?");
     if (!confirmCleanup) return;
 
     setCleaningUp(true);
@@ -358,13 +359,13 @@ export default function AdminDashboard() {
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="rounded-xl border-2 bg-primary/5 border-primary/20 hover:bg-primary/10">
                 <BookOpen className="mr-2 h-4 w-4 text-primary" />
-                Digital Ledger
+                Digital Security Ledger
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-[90vw] sm:max-w-md rounded-3xl">
               <DialogHeader>
-                <DialogTitle>Administrative Protocol</DialogTitle>
-                <DialogDescription>Manually log attendance for personnel without smart devices.</DialogDescription>
+                <DialogTitle>Administrative Override Protocol</DialogTitle>
+                <DialogDescription>Manually log attendance or correct forgotten departures.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-1">
@@ -388,13 +389,13 @@ export default function AdminDashboard() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="in">Arrival (In)</SelectItem>
-                        <SelectItem value="out">Departure (Out)</SelectItem>
+                        <SelectItem value="in">Manual Arrival</SelectItem>
+                        <SelectItem value="out">Correct Departure</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Log Time</Label>
+                    <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Override Time</Label>
                     <Input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)} className="rounded-xl h-11" />
                   </div>
                 </div>
@@ -402,7 +403,7 @@ export default function AdminDashboard() {
               <DialogFooter>
                 <Button onClick={handleManualAttendance} disabled={isLoggingManual || !selectedStaffId} className="w-full h-11 rounded-xl">
                   {isLoggingManual ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="mr-2 h-4 w-4" />}
-                  Finalize Entry
+                  Finalize Log Entry
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -462,11 +463,11 @@ export default function AdminDashboard() {
 
                 <div className="space-y-3">
                   <h4 className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
-                    <History className="h-3 w-3" /> Data Retention
+                    <History className="h-3 w-3" /> Data Retention Protocol
                   </h4>
                   <div className="p-4 bg-destructive/5 rounded-2xl border border-destructive/10">
-                    <p className="text-[10px] text-destructive font-bold leading-tight uppercase mb-2">Caution: Database Purge</p>
-                    <p className="text-xs text-muted-foreground mb-4">Clearing records older than 30 days maintains system performance.</p>
+                    <p className="text-[10px] text-destructive font-bold leading-tight uppercase mb-2">Reset Cycle (30 Days)</p>
+                    <p className="text-xs text-muted-foreground mb-4">Clearing records older than 30 days is standard operational maintenance to ensure high-speed data synthesis.</p>
                     <Button 
                       onClick={handleCleanupOldLogs} 
                       disabled={cleaningUp} 
@@ -474,7 +475,7 @@ export default function AdminDashboard() {
                       className="w-full h-10 rounded-xl"
                     >
                       {cleaningUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <History className="mr-2 h-4 w-4" />}
-                      Purge Logs (&gt;30 Days)
+                      Purge Legacy Logs (>30 Days)
                     </Button>
                   </div>
                 </div>
@@ -617,7 +618,7 @@ export default function AdminDashboard() {
             </TabsTrigger>
             <TabsTrigger value="history" className="rounded-lg px-6 flex items-center gap-2">
               <History className="h-4 w-4" />
-              Full History
+              Full History (30 Days)
             </TabsTrigger>
           </TabsList>
           
@@ -684,6 +685,7 @@ export default function AdminDashboard() {
                             +{log.overtimeMinutes}m OT
                           </Badge>
                         )}
+                        {log.manualOverride && <Badge variant="outline" className="text-[8px] h-4 uppercase border-primary text-primary">Override</Badge>}
                       </div>
                     </CardHeader>
                     <CardContent className="p-5 pt-4 space-y-4">
@@ -799,13 +801,21 @@ export default function AdminDashboard() {
       <Dialog open={!!editingStaff} onOpenChange={(open) => !open && setEditingStaff(null)}>
         <DialogContent className="sm:max-w-md rounded-3xl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-headline font-bold">Correct Shift Parameters</DialogTitle>
-            <DialogDescription>Adjust institutional shift windows for personnel.</DialogDescription>
+            <DialogTitle className="text-2xl font-headline font-bold">Institutional Correction</DialogTitle>
+            <DialogDescription>Adjust shift windows or departments for personnel.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-1">
               <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Personnel</Label>
               <Input value={editingStaff?.name || ""} disabled className="rounded-xl h-11 opacity-50" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Department</Label>
+              <Input 
+                value={editingStaff?.department || ""} 
+                onChange={e => setEditingStaff(p => p ? {...p, department: e.target.value} : null)} 
+                className="rounded-xl h-11" 
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
