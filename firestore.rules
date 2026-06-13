@@ -9,7 +9,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Direct access to user data to avoid circular helper dependencies
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -18,7 +17,7 @@ service cloud.firestore {
     
     match /organizations/{orgId} {
       allow create: if isSignedIn();
-      allow read: if true; // Publicly readable for checkpoint verification
+      allow read: if true; 
       allow update, delete: if isSignedIn() && (
         getUserData().role == 'super-admin' || 
         (getUserData().role == 'admin' && getUserData().organizationId == orgId)
@@ -29,22 +28,16 @@ service cloud.firestore {
     
     match /users/{userId} {
       allow create: if isSignedIn();
-      
-      // Get: Individual access (Directly check UID to avoid circularity)
-      // or Admin/Super-Admin oversight
       allow get: if isSignedIn() && (
         request.auth.uid == userId || 
         getUserData().role == 'super-admin' || 
         (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
       );
-      
-      // List: Queries MUST filter by organizationId or userId to match permissions
       allow list: if isSignedIn() && (
         getUserData().role == 'super-admin' || 
         (request.query.filters.userId == request.auth.uid) ||
         (getUserData().role == 'admin' && request.query.filters.organizationId == getUserData().organizationId)
       );
-
       allow update: if isSignedIn() && (request.auth.uid == userId || getUserData().role == 'super-admin');
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
@@ -52,28 +45,22 @@ service cloud.firestore {
     // --- Attendance Logs ---
     
     match /attendance_logs/{logId} {
-      // Get: Individual access, Org Admin, or Super Admin
       allow get: if isSignedIn() && (
         getUserData().role == 'super-admin' ||
         resource.data.userId == request.auth.uid ||
         resource.data.organizationId == getUserData().organizationId
       );
-
-      // List: Queries MUST filter by organizationId or userId to match permissions
       allow list: if isSignedIn() && (
         getUserData().role == 'super-admin' ||
         (request.query.filters.userId == request.auth.uid) ||
         (getUserData().role == 'admin' && request.query.filters.organizationId == getUserData().organizationId)
       );
-      
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-                    
       allow update: if isSignedIn() && (
         getUserData().role == 'super-admin' ||
         resource.data.userId == request.auth.uid || 
         (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)
       );
-      
       allow delete: if isSignedIn() && (getUserData().role == 'admin' || getUserData().role == 'super-admin');
     }
 
@@ -84,6 +71,9 @@ service cloud.firestore {
                     && request.resource.data.phone != null
                     && request.resource.data.organizationId != null;
                     
+      // Allow checkout: Only update the exitTime field
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['exitTime']);
+
       allow read, list: if isSignedIn() && (
         getUserData().role == 'super-admin' || 
         (getUserData().role == 'admin' && resource.data.organizationId == getUserData().organizationId)

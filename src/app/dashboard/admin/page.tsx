@@ -48,10 +48,11 @@ import {
   Search,
   ArrowRight,
   BarChart3,
-  LineChart
+  LineChart,
+  UserCircle
 } from "lucide-react";
 import { format, subDays, parse, isAfter } from "date-fns";
-import { AttendanceLog, UserProfile } from "@/lib/types";
+import { AttendanceLog, UserProfile, VisitorLog } from "@/lib/types";
 import { summarizeHandoverNotes, SummarizeHandoverNotesOutput } from "@/ai/flows/summarize-handover-notes";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -92,7 +93,6 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
 
-  // Manual Attendance & Editing State
   const [manualOpen, setManualOpen] = useState(false);
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [manualTime, setManualTime] = useState(format(new Date(), "HH:mm"));
@@ -102,7 +102,6 @@ export default function AdminDashboard() {
   const [editingStaff, setEditingStaff] = useState<UserProfile | null>(null);
   const [isUpdatingShift, setIsUpdatingShift] = useState(false);
 
-  // Memoize Query references for optimized list operations
   const staffQuery = useMemo(() => {
     if (!profile?.organizationId || !db) return null;
     return query(
@@ -113,6 +112,18 @@ export default function AdminDashboard() {
   }, [db, profile?.organizationId]);
 
   const { data: allStaff } = useCollection<UserProfile>(staffQuery);
+
+  const visitorLogsQuery = useMemo(() => {
+    if (!profile?.organizationId || !db) return null;
+    return query(
+      collection(db, "visitor_logs"),
+      where("organizationId", "==", profile.organizationId),
+      orderBy("entryTime", "desc"),
+      limit(100)
+    );
+  }, [db, profile?.organizationId]);
+
+  const { data: visitorLogs, loading: visitorsLoading } = useCollection<VisitorLog>(visitorLogsQuery);
 
   const historyQuery = useMemo(() => {
     if (!profile?.organizationId || !db) return null;
@@ -171,13 +182,10 @@ export default function AdminDashboard() {
     );
   }, [historyLogs, searchTerm]);
 
-  // Analytics Data Preparation
   const analyticsData = useMemo(() => {
     if (!historyLogs || historyLogs.length === 0) return { attendance: [], mood: [], overtime: [] };
 
     const dailyStats: Record<string, { date: string, present: number, late: number, moodTotal: number, moodCount: number, overtime: number }> = {};
-    
-    // Process last 30 days
     const last30Days = Array.from({ length: 30 }, (_, i) => format(subDays(new Date(), i), 'yyyy-MM-dd')).reverse();
     last30Days.forEach(d => {
       dailyStats[d] = { date: d, present: 0, late: 0, moodTotal: 0, moodCount: 0, overtime: 0 };
@@ -232,7 +240,6 @@ export default function AdminDashboard() {
           setIsLoggingManual(false);
           return;
         }
-
         const startThreshold = parse(staffMember.shiftStart || "08:00", 'HH:mm', new Date());
         const actualIn = parse(manualTime, 'HH:mm', new Date());
         const status = isAfter(actualIn, startThreshold) ? 'late' : 'on-time';
@@ -345,7 +352,6 @@ export default function AdminDashboard() {
     if (!db) return;
     const confirmDelete = window.confirm("SECURITY ALERT: This will permanently remove this record. Are you sure?");
     if (!confirmDelete) return;
-    
     try {
       await deleteDoc(doc(db, "attendance_logs", logId));
       toast({ title: "Record Deleted", description: "The log has been removed." });
@@ -358,23 +364,19 @@ export default function AdminDashboard() {
     if (!db || !profile?.organizationId || cleaningUp) return;
     const confirmCleanup = window.confirm("CAUTION: PulseLog Retention Protocol. This will permanently delete records older than 30 days. Proceed?");
     if (!confirmCleanup) return;
-
     setCleaningUp(true);
     try {
       const thirtyDaysAgo = subDays(new Date(), 30);
       const formattedDate = format(thirtyDaysAgo, 'yyyy-MM-dd');
-      
       const q = query(
         collection(db, "attendance_logs"),
         where("organizationId", "==", profile.organizationId),
         where("date", "<", formattedDate)
       );
-      
       const snap = await getDocs(q);
       const batch = writeBatch(db);
       snap.docs.forEach(doc => batch.delete(doc.ref));
       await batch.commit();
-      
       toast({ title: "Database Optimized", description: `${snap.size} legacy records purged.` });
     } catch (err) {
       toast({ title: "Cleanup Failed", description: "Maintenance error.", variant: "destructive" });
@@ -529,7 +531,7 @@ export default function AdminDashboard() {
                   </h4>
                   <div className="p-4 bg-destructive/5 rounded-2xl border border-destructive/10">
                     <p className="text-[10px] text-destructive font-bold leading-tight uppercase mb-2">Reset Cycle (30 Days)</p>
-                    <p className="text-xs text-muted-foreground mb-4">Clearing records older than 30 days is standard operational maintenance.</p>
+                    <p className="text-xs text-muted-foreground mb-4">Clearing records older than 30 days is standard maintenance.</p>
                     <Button 
                       onClick={handleCleanupOldLogs} 
                       disabled={cleaningUp} 
@@ -673,25 +675,29 @@ export default function AdminDashboard() {
 
       <Tabs defaultValue="live" className="w-full space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-4">
-          <TabsList className="bg-muted/50 p-1 rounded-xl w-full md:w-auto">
-            <TabsTrigger value="live" className="rounded-lg px-6 flex items-center gap-2">
+          <TabsList className="bg-muted/50 p-1 rounded-xl w-full md:w-auto overflow-x-auto h-auto">
+            <TabsTrigger value="live" className="rounded-lg px-4 py-2 flex items-center gap-2 whitespace-nowrap">
               <Activity className="h-4 w-4" />
               Live Presence
             </TabsTrigger>
-            <TabsTrigger value="history" className="rounded-lg px-6 flex items-center gap-2">
-              <History className="h-4 w-4" />
-              Full History (30 Days)
+            <TabsTrigger value="visitors" className="rounded-lg px-4 py-2 flex items-center gap-2 whitespace-nowrap">
+              <UserCircle className="h-4 w-4" />
+              Visitor Traffic
             </TabsTrigger>
-            <TabsTrigger value="analytics" className="rounded-lg px-6 flex items-center gap-2">
+            <TabsTrigger value="history" className="rounded-lg px-4 py-2 flex items-center gap-2 whitespace-nowrap">
+              <History className="h-4 w-4" />
+              Staff History
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="rounded-lg px-4 py-2 flex items-center gap-2 whitespace-nowrap">
               <BarChart3 className="h-4 w-4" />
-              Performance Analytics
+              Analytics
             </TabsTrigger>
           </TabsList>
           
           <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input 
-              placeholder="Filter personnel..." 
+              placeholder="Filter by name..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 rounded-xl h-10"
@@ -717,20 +723,10 @@ export default function AdminDashboard() {
                     log.clockOutTime ? "bg-muted/30 opacity-70" : "bg-card ring-1 ring-primary/5"
                   )}>
                     <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        onClick={() => staffMember && setEditingStaff(staffMember)}
-                        className="h-7 w-7 text-primary hover:bg-primary/10 rounded-lg"
-                      >
+                      <Button variant="ghost" size="icon" onClick={() => staffMember && setEditingStaff(staffMember)} className="h-7 w-7 text-primary hover:bg-primary/10 rounded-lg">
                         <Edit2 className="h-4 w-4" />
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        onClick={() => handleDeleteLog(log.id)}
-                        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg"
-                      >
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteLog(log.id)} className="h-7 w-7 text-destructive hover:bg-destructive/10 rounded-lg">
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -747,11 +743,8 @@ export default function AdminDashboard() {
                       <div className="flex flex-col items-end gap-1">
                         {log.status === 'late' && <Badge variant="destructive" className="text-[8px] h-4 uppercase">Late</Badge>}
                         {organization?.overtimeEnabled && (log.overtimeMinutes || 0) > 0 && (
-                          <Badge className="bg-green-600 text-white text-[8px] h-4 uppercase">
-                            +{log.overtimeMinutes}m OT
-                          </Badge>
+                          <Badge className="bg-green-600 text-white text-[8px] h-4 uppercase">+{log.overtimeMinutes}m OT</Badge>
                         )}
-                        {log.manualOverride && <Badge variant="outline" className="text-[8px] h-4 uppercase border-primary text-primary">Override</Badge>}
                       </div>
                     </CardHeader>
                     <CardContent className="p-5 pt-4 space-y-4">
@@ -766,27 +759,6 @@ export default function AdminDashboard() {
                           <p className="text-xs font-mono font-bold">{log.clockOutTime?.substring(0, 5) || '--:--'}</p>
                         </div>
                       </div>
-                      
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          {log.clockOutTime ? (
-                            <div className="flex gap-0.5">
-                              {Array(log.moodRating || 0).fill(0).map((_, i) => (
-                                <div key={i} className="h-1.5 w-1.5 rounded-full bg-primary" />
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="flex items-center gap-2 text-[10px] font-bold text-green-600 uppercase tracking-widest">
-                              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                              On-Site
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Badge variant="ghost" className="text-[9px] uppercase opacity-40 px-0">Verified</Badge>
-                          <p className="text-[9px] font-mono text-muted-foreground opacity-60">({staffMember?.shiftStart}-{staffMember?.shiftEnd})</p>
-                        </div>
-                      </div>
                     </CardContent>
                   </Card>
                 );
@@ -795,70 +767,107 @@ export default function AdminDashboard() {
           </div>
         </TabsContent>
 
+        <TabsContent value="visitors" className="m-0">
+          <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-card">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/30 border-b">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Visitor</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Contact</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Reason</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Vehicle</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Entry/Exit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {visitorsLoading ? (
+                    <tr><td colSpan={5} className="text-center py-10"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr>
+                  ) : !visitorLogs || visitorLogs.length === 0 ? (
+                    <tr><td colSpan={5} className="text-center py-20 opacity-40">No visitor records.</td></tr>
+                  ) : (
+                    visitorLogs.filter(v => v.name.toLowerCase().includes(searchTerm.toLowerCase())).map((v) => (
+                      <tr key={v.id} className="hover:bg-muted/5">
+                        <td className="px-6 py-4">
+                          <div className="font-bold">{v.name}</div>
+                          <div className="text-[10px] text-muted-foreground">{v.id}</div>
+                        </td>
+                        <td className="px-6 py-4 font-mono text-xs">{v.phone}</td>
+                        <td className="px-6 py-4 text-xs">{v.reason}</td>
+                        <td className="px-6 py-4">
+                          <Badge variant="outline" className="text-[9px] uppercase font-bold">
+                            {v.vehicleType} {v.vehiclePlate && `(${v.vehiclePlate})`}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-bold text-green-600">IN: {format(new Date(v.entryTime), 'HH:mm dd/MM')}</span>
+                            {v.exitTime ? (
+                              <span className="text-[10px] font-bold text-muted-foreground">OUT: {format(new Date(v.exitTime), 'HH:mm dd/MM')}</span>
+                            ) : (
+                              <Badge variant="outline" className="w-fit text-[8px] animate-pulse border-amber-500 text-amber-600">ON-SITE</Badge>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="history" className="m-0">
           <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-card">
-            <div className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/30 border-b">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Staff</th>
-                      <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Date</th>
-                      <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Shift Window</th>
-                      <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Status</th>
-                      <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Handover</th>
-                      <th className="px-6 py-4 text-right pr-6"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {historyLoading ? (
-                      <tr><td colSpan={6} className="text-center py-10"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr>
-                    ) : filteredHistory.length === 0 ? (
-                      <tr><td colSpan={6} className="text-center py-20 opacity-40">No records found.</td></tr>
-                    ) : (
-                      filteredHistory.map((log) => (
-                        <tr key={log.id} className="hover:bg-muted/5 group">
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-foreground">{log.userName}</div>
-                            <div className="text-[10px] text-muted-foreground uppercase">{log.userDepartment}</div>
-                          </td>
-                          <td className="px-6 py-4 font-mono text-xs">{log.date}</td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2 font-mono text-xs">
-                              {log.clockInTime?.substring(0, 5)} <ArrowRight className="h-3 w-3 opacity-40" /> {log.clockOutTime?.substring(0, 5) || '??:??'}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <Badge variant="outline" className={cn(
-                              "text-[8px] uppercase font-bold",
-                              log.status === 'late' && "border-destructive text-destructive",
-                              log.status === 'overtime' && "border-green-600 text-green-600",
-                              !log.clockOutTime && "animate-pulse border-amber-500 text-amber-500"
-                            )}>
-                              {log.status.replace('-', ' ')}
-                            </Badge>
-                          </td>
-                          <td className="px-6 py-4 max-w-xs">
-                            <p className="text-xs text-muted-foreground truncate" title={log.handoverNotes || ""}>
-                              {log.handoverNotes || "--"}
-                            </p>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              onClick={() => handleDeleteLog(log.id)}
-                              className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/30 border-b">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Staff</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Date</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Shift</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Status</th>
+                    <th className="px-6 py-4 text-right pr-6"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {historyLoading ? (
+                    <tr><td colSpan={5} className="text-center py-10"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr>
+                  ) : filteredHistory.length === 0 ? (
+                    <tr><td colSpan={5} className="text-center py-20 opacity-40">No records found.</td></tr>
+                  ) : (
+                    filteredHistory.map((log) => (
+                      <tr key={log.id} className="hover:bg-muted/5 group">
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-foreground">{log.userName}</div>
+                          <div className="text-[10px] text-muted-foreground uppercase">{log.userDepartment}</div>
+                        </td>
+                        <td className="px-6 py-4 font-mono text-xs">{log.date}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2 font-mono text-xs">
+                            {log.clockInTime?.substring(0, 5)} <ArrowRight className="h-3 w-3 opacity-40" /> {log.clockOutTime?.substring(0, 5) || '??:??'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge variant="outline" className={cn(
+                            "text-[8px] uppercase font-bold",
+                            log.status === 'late' && "border-destructive text-destructive",
+                            log.status === 'overtime' && "border-green-600 text-green-600",
+                          )}>
+                            {log.status.replace('-', ' ')}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteLog(log.id)} className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </Card>
         </TabsContent>
@@ -868,36 +877,20 @@ export default function AdminDashboard() {
             <Card className="rounded-[2.5rem] border-none shadow-sm bg-card p-6 md:p-8">
               <CardHeader className="px-0 pt-0">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-primary/10 rounded-xl">
-                    <LineChart className="h-5 w-5 text-primary" />
-                  </div>
+                  <div className="p-2 bg-primary/10 rounded-xl"><LineChart className="h-5 w-5 text-primary" /></div>
                   <CardTitle className="text-xl font-bold">Attendance Velocity</CardTitle>
                 </div>
-                <CardDescription>Daily present vs. late arrivals (Last 30 Days)</CardDescription>
               </CardHeader>
               <div className="h-[300px] w-full mt-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsLineChart data={analyticsData.attendance}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
-                    <XAxis 
-                      dataKey="date" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                      minTickGap={30}
-                    />
-                    <YAxis 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                    />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '12px', border: '1px solid hsl(var(--border))' }}
-                      itemStyle={{ fontSize: 12, fontWeight: 'bold' }}
-                    />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} minTickGap={30} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '12px', border: '1px solid hsl(var(--border))' }} />
                     <Legend iconType="circle" wrapperStyle={{ paddingTop: 20 }} />
-                    <Line type="monotone" dataKey="present" stroke="hsl(var(--primary))" strokeWidth={3} dot={false} activeDot={{ r: 6 }} name="Total Presence" />
-                    <Line type="monotone" dataKey="late" stroke="hsl(var(--destructive))" strokeWidth={3} dot={false} activeDot={{ r: 6 }} name="Late Arrivals" />
+                    <Line type="monotone" dataKey="present" stroke="hsl(var(--primary))" strokeWidth={3} dot={false} name="Total Presence" />
+                    <Line type="monotone" dataKey="late" stroke="hsl(var(--destructive))" strokeWidth={3} dot={false} name="Late Arrivals" />
                   </RechartsLineChart>
                 </ResponsiveContainer>
               </div>
@@ -906,75 +899,19 @@ export default function AdminDashboard() {
             <Card className="rounded-[2.5rem] border-none shadow-sm bg-card p-6 md:p-8">
               <CardHeader className="px-0 pt-0">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-amber-100 rounded-xl">
-                    <Smile className="h-5 w-5 text-amber-600" />
-                  </div>
+                  <div className="p-2 bg-amber-100 rounded-xl"><Smile className="h-5 w-5 text-amber-600" /></div>
                   <CardTitle className="text-xl font-bold">Morale Consistency</CardTitle>
                 </div>
-                <CardDescription>Average mood rating (1.0 - 3.0 scale)</CardDescription>
               </CardHeader>
               <div className="h-[300px] w-full mt-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsLineChart data={analyticsData.mood}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
-                    <XAxis 
-                      dataKey="date" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                      minTickGap={30}
-                    />
-                    <YAxis 
-                      domain={[1, 3]}
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                    />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '12px', border: '1px solid hsl(var(--border))' }}
-                    />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} minTickGap={30} />
+                    <YAxis domain={[1, 3]} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '12px', border: '1px solid hsl(var(--border))' }} />
                     <Line type="stepAfter" dataKey="avgMood" stroke="hsl(var(--accent))" strokeWidth={4} dot={{ r: 4, fill: 'hsl(var(--accent))' }} name="Avg Mood" />
                   </RechartsLineChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-
-            <Card className="rounded-[2.5rem] border-none shadow-sm bg-card p-6 md:p-8 lg:col-span-2">
-              <CardHeader className="px-0 pt-0">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-green-100 rounded-xl">
-                    <TrendingUp className="h-5 w-5 text-green-600" />
-                  </div>
-                  <CardTitle className="text-xl font-bold">Overtime Heatmap</CardTitle>
-                </div>
-                <CardDescription>Aggregate overtime minutes per day</CardDescription>
-              </CardHeader>
-              <div className="h-[300px] w-full mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={analyticsData.overtime}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted))" />
-                    <XAxis 
-                      dataKey="date" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                      minTickGap={20}
-                    />
-                    <YAxis 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                    />
-                    <Tooltip 
-                      cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
-                      contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '12px', border: '1px solid hsl(var(--border))' }}
-                    />
-                    <Bar dataKey="minutes" name="Minutes" radius={[6, 6, 0, 0]}>
-                      {analyticsData.overtime.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.minutes > 60 ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'} />
-                      ))}
-                    </Bar>
-                  </BarChart>
                 </ResponsiveContainer>
               </div>
             </Card>
@@ -986,20 +923,11 @@ export default function AdminDashboard() {
         <DialogContent className="sm:max-w-md rounded-3xl">
           <DialogHeader>
             <DialogTitle className="text-2xl font-headline font-bold">Institutional Correction</DialogTitle>
-            <DialogDescription>Adjust shift windows or departments for personnel.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-1">
               <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Personnel</Label>
               <Input value={editingStaff?.name || ""} disabled className="rounded-xl h-11 opacity-50" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Department</Label>
-              <Input 
-                value={editingStaff?.department || ""} 
-                onChange={e => setEditingStaff(p => p ? {...p, department: e.target.value} : null)} 
-                className="rounded-xl h-11" 
-              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">

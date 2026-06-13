@@ -59,4 +59,5 @@ export interface VisitorLog {
   vehicleType?: VehicleType;
   vehiclePlate?: string;
   entryTime: string;
+  exitTime?: string;
 }

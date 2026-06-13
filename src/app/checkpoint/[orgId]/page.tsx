@@ -1,11 +1,11 @@
 
 "use client";
 
-import { useState, useMemo, memo } from "react";
+import { useState, useMemo, memo, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
 import { useFirestore, useDoc } from "@/firebase";
-import { doc, setDoc, collection } from "firebase/firestore";
+import { doc, setDoc, collection, updateDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,9 +21,11 @@ import {
   MessageSquare,
   AlertCircle,
   ArrowRight,
+  LogOut,
+  CheckCircle2,
   Bike
 } from "lucide-react";
-import { Organization, VehicleType } from "@/lib/types";
+import { Organization, VehicleType, VisitorLog } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 
@@ -62,7 +64,7 @@ const VisitorForm = memo(({ organizationId, onSubmit, isSubmitting }: {
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-[10px] uppercase font-black tracking-widest ml-1">Phone (Kenya Format)</Label>
+            <Label className="text-[10px] uppercase font-black tracking-widest ml-1">Phone (Kenya: 07XX...)</Label>
             <div className="relative">
               <Phone className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
               <Input 
@@ -81,7 +83,7 @@ const VisitorForm = memo(({ organizationId, onSubmit, isSubmitting }: {
           <div className="relative">
             <MessageSquare className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
             <Input 
-              placeholder="e.g., Delivery, Meeting, Consultation" 
+              placeholder="e.g., Delivery, Meeting, Maintenance" 
               value={reason} 
               onChange={e => setReason(e.target.value)} 
               required 
@@ -128,12 +130,6 @@ const VisitorForm = memo(({ organizationId, onSubmit, isSubmitting }: {
         >
           {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : "Authorize Entry"}
         </Button>
-        <div className="text-center">
-          <Link href="/login" className="text-xs font-bold text-primary hover:underline flex items-center justify-center gap-2">
-            <ShieldCheck className="h-4 w-4" />
-            Institutional Staff Login
-          </Link>
-        </div>
       </CardFooter>
     </form>
   );
@@ -148,9 +144,17 @@ export default function CheckpointPage() {
   const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeVisitorId, setActiveVisitorId] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
-  // Fetch organization if not already available
+  useEffect(() => {
+    // Session memory: Remember if this device already has an active entry
+    const savedId = localStorage.getItem(`active_visitor_${orgId}`);
+    if (savedId) setActiveVisitorId(savedId);
+  }, [orgId]);
+
   const orgRef = useMemo(() => orgId ? doc(db, "organizations", orgId) : null, [db, orgId]);
   const { data: checkpointOrg, loading: orgLoading } = useDoc<Organization>(orgRef);
 
@@ -162,17 +166,39 @@ export default function CheckpointPage() {
     setIsSubmitting(true);
     try {
       const newLogRef = doc(collection(db, "visitor_logs"));
+      const newLogId = newLogRef.id;
+      
       await setDoc(newLogRef, {
-        id: newLogRef.id,
+        id: newLogId,
         organizationId: displayOrg.id,
         ...data,
         entryTime: new Date().toISOString()
       });
-      toast({ title: "Access Granted", description: "Visitor protocol documented. Welcome." });
-      // Clear form via redirect or just stay
-      router.refresh();
+      
+      localStorage.setItem(`active_visitor_${orgId}`, newLogId);
+      setActiveVisitorId(newLogId);
+      setSubmitted(true);
+      toast({ title: "Access Granted", description: "Identity verified. Proceed." });
     } catch (err) {
-      toast({ title: "Sync Error", description: "Failed to log visitor access.", variant: "destructive" });
+      toast({ title: "Sync Error", description: "Failed to log access.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleVisitorCheckout = async () => {
+    if (!activeVisitorId || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, "visitor_logs", activeVisitorId), {
+        exitTime: new Date().toISOString()
+      });
+      localStorage.removeItem(`active_visitor_${orgId}`);
+      setActiveVisitorId(null);
+      setSubmitted(true);
+      toast({ title: "Departure Verified", description: "Safe travels." });
+    } catch (err) {
+      toast({ title: "Checkout Error", description: "Failed to log departure.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -192,14 +218,10 @@ export default function CheckpointPage() {
         <AlertCircle className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-black">Checkpoint Error</h1>
         <p className="text-muted-foreground mt-2">The institutional perimeter could not be resolved.</p>
-        <Link href="/">
-          <Button variant="ghost" className="mt-6">Return Home</Button>
-        </Link>
       </div>
     );
   }
 
-  // We only show "Staff recognized" if auth is NOT loading and user IS a member
   const isStaffMember = !authLoading && profile?.organizationId === displayOrg.id;
 
   return (
@@ -219,20 +241,45 @@ export default function CheckpointPage() {
           <Card className="rounded-[2.5rem] border-none shadow-2xl overflow-hidden animate-in zoom-in-95">
             <CardHeader className="p-8 text-center bg-primary/5 border-b">
               <CardTitle className="text-2xl font-bold">Personnel Recognized</CardTitle>
-              <CardDescription>Welcome back, {profile?.name}. GPS anti-fraud protocol active.</CardDescription>
+              <CardDescription>Welcome back, {profile?.name}. GPS anti-fraud active.</CardDescription>
             </CardHeader>
             <CardContent className="p-10 space-y-6 text-center">
-              <div className="flex flex-col items-center gap-4">
-                <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
-                  <ShieldCheck className="h-10 w-10 text-primary" />
-                </div>
-                <p className="text-sm font-medium leading-relaxed">
-                  Proceed to your shift lifecycle management portal. Arrival and departure must be verified within the facility perimeter.
-                </p>
-              </div>
               <Button onClick={() => router.push('/dashboard/staff')} className="w-full h-14 rounded-2xl text-lg font-bold shadow-xl">
                 Enter Staff Portal
                 <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            </CardContent>
+          </Card>
+        ) : submitted ? (
+          <Card className="rounded-[2.5rem] border-none shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+            <CardContent className="p-12 text-center space-y-6">
+              <div className="flex justify-center">
+                <div className="h-20 w-20 rounded-full bg-green-100 flex items-center justify-center">
+                  <CheckCircle2 className="h-10 w-10 text-green-600" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-2xl font-black tracking-tight text-foreground">Protocol Complete</h2>
+                <p className="text-muted-foreground">Your presence has been documented. Thank you for complying with facility security.</p>
+              </div>
+              <Button onClick={() => setSubmitted(false)} variant="outline" className="rounded-xl h-12 px-8 font-bold">
+                Return to Entry
+              </Button>
+            </CardContent>
+          </Card>
+        ) : activeVisitorId ? (
+          <Card className="rounded-[2.5rem] border-none shadow-2xl overflow-hidden">
+            <CardHeader className="p-8 text-center bg-amber-50 border-b">
+              <CardTitle className="text-2xl font-bold text-amber-900">Visitor Detected On-Site</CardTitle>
+              <CardDescription className="text-amber-800/60">You have an active entry record. Verify departure to complete protocol.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-10 text-center">
+              <Button 
+                onClick={handleVisitorCheckout} 
+                disabled={isSubmitting}
+                className="w-full h-16 rounded-2xl text-xl font-black bg-amber-600 hover:bg-amber-700 shadow-xl"
+              >
+                {isSubmitting ? <Loader2 className="h-6 w-6 animate-spin" /> : "Verify Departure"}
               </Button>
             </CardContent>
           </Card>
@@ -243,18 +290,24 @@ export default function CheckpointPage() {
                 <UserCircle className="h-12 w-12 text-muted-foreground" />
               </div>
               <CardTitle className="text-2xl font-bold">Visitor Access Protocol</CardTitle>
-              <CardDescription>Documentation required for facility entry.</CardDescription>
+              <CardDescription>Identity and reason for visit required for entry.</CardDescription>
             </CardHeader>
             <VisitorForm 
               organizationId={displayOrg.id} 
               onSubmit={handleVisitorSubmit} 
               isSubmitting={isSubmitting} 
             />
+            <div className="p-8 pt-0 text-center">
+              <Link href="/login" className="text-xs font-bold text-primary hover:underline flex items-center justify-center gap-2">
+                <ShieldCheck className="h-4 w-4" />
+                Staff Login
+              </Link>
+            </div>
           </Card>
         )}
 
         <div className="text-center opacity-40">
-          <p className="text-[10px] font-bold uppercase tracking-widest">PulseLog © {new Date().getFullYear()} Security Protocol</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest">PulseLog © {new Date().getFullYear()} Cyber-Resilient Protocol</p>
         </div>
       </div>
     </div>
