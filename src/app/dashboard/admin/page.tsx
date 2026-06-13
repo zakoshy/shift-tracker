@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -23,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Users, 
@@ -42,10 +43,8 @@ import {
   UserCheck,
   BookOpen,
   Zap,
-  ShieldAlert,
   Trash2,
   Edit2,
-  Filter,
   Search,
   ArrowRight
 } from "lucide-react";
@@ -96,7 +95,6 @@ export default function AdminDashboard() {
 
   const { data: allStaff } = useCollection<UserProfile>(staffQuery);
 
-  // History Query (Full History for the Org)
   const historyQuery = useMemo(() => {
     if (!profile?.organizationId || !db) return null;
     return query(
@@ -166,7 +164,7 @@ export default function AdminDashboard() {
       if (manualType === "in") {
         const existingIn = logs.find(l => l.userId === selectedStaffId && !l.clockOutTime);
         if (existingIn) {
-          toast({ title: "Protocol Violation", description: "Personnel is already logged in for today.", variant: "destructive" });
+          toast({ title: "Protocol Violation", description: "Personnel is already logged in.", variant: "destructive" });
           setIsLoggingManual(false);
           return;
         }
@@ -200,7 +198,7 @@ export default function AdminDashboard() {
         await updateDoc(doc(db, "attendance_logs", existingLog.id), {
           clockOutTime: timeStr,
           manualOverride: true,
-          status: 'present' // Or recalculate status if needed
+          status: 'present'
         });
         toast({ title: "Departure Logged", description: `Supervisor override for ${staffMember.name}` });
       }
@@ -294,7 +292,7 @@ export default function AdminDashboard() {
 
   const handleCleanupOldLogs = async () => {
     if (!db || !profile?.organizationId || cleaningUp) return;
-    const confirmCleanup = window.confirm("CAUTION: PulseLog Retention Protocol. This will permanently delete records older than 30 days to maintain system integrity. Proceed?");
+    const confirmCleanup = window.confirm("CAUTION: PulseLog Retention Protocol. This will permanently delete records older than 30 days. Proceed?");
     if (!confirmCleanup) return;
 
     setCleaningUp(true);
@@ -467,7 +465,7 @@ export default function AdminDashboard() {
                   </h4>
                   <div className="p-4 bg-destructive/5 rounded-2xl border border-destructive/10">
                     <p className="text-[10px] text-destructive font-bold leading-tight uppercase mb-2">Reset Cycle (30 Days)</p>
-                    <p className="text-xs text-muted-foreground mb-4">Clearing records older than 30 days is standard operational maintenance to ensure high-speed data synthesis.</p>
+                    <p className="text-xs text-muted-foreground mb-4">Clearing records older than 30 days is standard operational maintenance.</p>
                     <Button 
                       onClick={handleCleanupOldLogs} 
                       disabled={cleaningUp} 
@@ -486,7 +484,7 @@ export default function AdminDashboard() {
           <Link href={hasLocation ? `/dashboard/admin/terminal` : "#"} onClick={(e) => {
             if (!hasLocation) {
               e.preventDefault();
-              toast({ title: "Terminal Locked", description: "You must set the site coordinates in Config first.", variant: "destructive" });
+              toast({ title: "Terminal Locked", description: "You must set site coordinates in Config first.", variant: "destructive" });
             }
           }}>
             <Button variant="outline" size="sm" className={cn("rounded-xl border-2", !hasLocation && "opacity-50 grayscale")}>
@@ -640,7 +638,7 @@ export default function AdminDashboard() {
             ) : logs.length === 0 ? (
               <div className="col-span-full py-20 text-center border-2 border-dashed rounded-[2rem] bg-card/50">
                 <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-10" />
-                <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">No active personnel logs for today</p>
+                <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">No active logs for today</p>
               </div>
             ) : (
               logs.filter(l => l.userName.toLowerCase().includes(searchTerm.toLowerCase())).map((log) => {
