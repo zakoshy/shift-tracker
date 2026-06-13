@@ -10,7 +10,7 @@ import {
   FirestoreError 
 } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 export function useCollection<T = DocumentData>(query: Query<T> | null) {
   const [data, setData] = useState<T[] | null>(null);
@@ -36,12 +36,14 @@ export function useCollection<T = DocumentData>(query: Query<T> | null) {
         setLoading(false);
       },
       async (err) => {
-        // Extract path from internal query state if possible for better debugging
-        const path = (query as any)?._query?.path?.segments?.join('/') || 'collection-query';
+        // Robust path extraction for Firebase v11
+        const path = (query as any)?.path || (query as any)?._query?.path?.segments?.join('/') || 'collection-query';
+        
         const permissionError = new FirestorePermissionError({
           path: path,
           operation: 'list',
-        });
+        } satisfies SecurityRuleContext);
+
         errorEmitter.emit('permission-error', permissionError);
         setError(err);
         setLoading(false);

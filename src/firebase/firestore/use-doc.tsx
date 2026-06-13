@@ -10,7 +10,7 @@ import {
   FirestoreError 
 } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 /**
  * Hook to listen to a real-time stream of a single Firestore document.
@@ -43,7 +43,8 @@ export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
         const permissionError = new FirestorePermissionError({
           path: ref.path,
           operation: 'get',
-        });
+        } satisfies SecurityRuleContext);
+        
         errorEmitter.emit('permission-error', permissionError);
         setError(err);
         setLoading(false);

@@ -4,19 +4,25 @@
 import { useEffect } from 'react';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { useToast } from '@/hooks/use-toast';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export function FirebaseErrorListener() {
   const { toast } = useToast();
 
   useEffect(() => {
-    const handlePermissionError = (error: any) => {
-      // In development, this will help surface the exact rule that failed
-      console.error('[Firebase Security Alert]', error.context);
+    const handlePermissionError = (error: FirestorePermissionError) => {
+      // Robust logging for development
+      const context = error.context || {};
+      console.error('[Firebase Security Alert]', {
+        operation: context.operation,
+        path: context.path,
+        message: error.message
+      });
       
       toast({
         variant: 'destructive',
         title: 'Security Protocol Violation',
-        description: `Operation "${error.context.operation}" denied on path: ${error.context.path}. Check Security Rules.`,
+        description: `Operation "${context.operation || 'unknown'}" denied on path: ${context.path || 'unknown'}. Check Security Rules and Query Filters.`,
       });
     };
 
