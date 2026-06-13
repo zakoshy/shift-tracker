@@ -14,14 +14,17 @@ import {
   deleteDoc, 
   getDocs, 
   writeBatch,
-  setDoc
+  setDoc,
+  orderBy,
+  limit
 } from "firebase/firestore";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Users, 
@@ -42,7 +45,9 @@ import {
   Zap,
   ShieldAlert,
   Trash2,
-  Edit2
+  Edit2,
+  Filter,
+  Search
 } from "lucide-react";
 import { format, subDays, parse } from "date-fns";
 import { AttendanceLog, UserProfile } from "@/lib/types";
@@ -70,6 +75,7 @@ export default function AdminDashboard() {
   const [settingLocation, setSettingLocation] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
   const [updatingConfig, setUpdatingConfig] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
 
   // Manual Attendance & Editing State
@@ -89,6 +95,19 @@ export default function AdminDashboard() {
   }, [db, profile?.organizationId]);
 
   const { data: allStaff } = useCollection<UserProfile>(staffQuery);
+
+  // History Query (Full History for the Org)
+  const historyQuery = useMemo(() => {
+    if (!profile?.organizationId || !db) return null;
+    return query(
+      collection(db, "attendance_logs"),
+      where("organizationId", "==", profile.organizationId),
+      orderBy("date", "desc"),
+      limit(50)
+    );
+  }, [db, profile?.organizationId]);
+
+  const { data: historyLogs, loading: historyLoading } = useCollection<AttendanceLog>(historyQuery);
 
   const todayLogsQuery = useMemo(() => {
     if (!profile?.organizationId || !db) return null;
@@ -122,6 +141,14 @@ export default function AdminDashboard() {
   };
 
   const hasLocation = !!(organization?.latitude && organization?.longitude);
+
+  const filteredHistory = useMemo(() => {
+    if (!historyLogs) return [];
+    return historyLogs.filter(log => 
+      log.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.userDepartment.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [historyLogs, searchTerm]);
 
   const handleManualAttendance = async () => {
     if (!selectedStaffId || !db || !profile?.organizationId || isLoggingManual) return;
@@ -581,118 +608,199 @@ export default function AdminDashboard() {
         </Card>
       )}
 
-      <div className="space-y-6">
-        <div className="flex items-center justify-between border-b pb-4">
-          <h2 className="text-xl font-headline font-bold flex items-center gap-3">
-            <Activity className="h-5 w-5 text-primary" />
-            Institutional Presence Stream
-          </h2>
-          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-            Live Sync
-          </span>
+      <Tabs defaultValue="live" className="w-full space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-4">
+          <TabsList className="bg-muted/50 p-1 rounded-xl w-full md:w-auto">
+            <TabsTrigger value="live" className="rounded-lg px-6 flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              Live Presence
+            </TabsTrigger>
+            <TabsTrigger value="history" className="rounded-lg px-6 flex items-center gap-2">
+              <History className="h-4 w-4" />
+              Full History
+            </TabsTrigger>
+          </TabsList>
+          
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Filter personnel..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 rounded-xl h-10"
+            />
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {loading ? (
-            Array(4).fill(0).map((_, i) => <Card key={i} className="h-48 animate-pulse bg-muted/30 rounded-2xl" />)
-          ) : logs.length === 0 ? (
-            <div className="col-span-full py-20 text-center border-2 border-dashed rounded-[2rem] bg-card/50">
-              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-10" />
-              <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">No active personnel logs for {format(new Date(), 'MMM do')}</p>
-            </div>
-          ) : (
-            logs.map((log) => {
-              const staffMember = allStaff?.find(s => s.uid === log.userId);
-              return (
-                <Card key={log.id} className={cn(
-                  "group relative transition-all rounded-2xl border-none shadow-sm hover:shadow-md",
-                  log.clockOutTime ? "bg-muted/30 opacity-70" : "bg-card ring-1 ring-primary/5"
-                )}>
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      onClick={() => staffMember && setEditingStaff(staffMember)}
-                      className="h-7 w-7 text-primary hover:bg-primary/10 rounded-lg"
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      onClick={() => handleDeleteLog(log.id)}
-                      className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <CardHeader className="p-5 pb-0 flex flex-row items-center justify-between space-y-0">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-xl bg-primary/5 text-primary flex items-center justify-center font-black text-sm border border-primary/10">
-                        {log.userName.charAt(0)}
-                      </div>
-                      <div>
-                        <CardTitle className="text-sm font-bold tracking-tight">{log.userName}</CardTitle>
-                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">{log.userDepartment}</p>
-                      </div>
+        <TabsContent value="live" className="m-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {loading ? (
+              Array(4).fill(0).map((_, i) => <Card key={i} className="h-48 animate-pulse bg-muted/30 rounded-2xl" />)
+            ) : logs.length === 0 ? (
+              <div className="col-span-full py-20 text-center border-2 border-dashed rounded-[2rem] bg-card/50">
+                <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-10" />
+                <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">No active personnel logs for today</p>
+              </div>
+            ) : (
+              logs.filter(l => l.userName.toLowerCase().includes(searchTerm.toLowerCase())).map((log) => {
+                const staffMember = allStaff?.find(s => s.uid === log.userId);
+                return (
+                  <Card key={log.id} className={cn(
+                    "group relative transition-all rounded-2xl border-none shadow-sm hover:shadow-md",
+                    log.clockOutTime ? "bg-muted/30 opacity-70" : "bg-card ring-1 ring-primary/5"
+                  )}>
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => staffMember && setEditingStaff(staffMember)}
+                        className="h-7 w-7 text-primary hover:bg-primary/10 rounded-lg"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => handleDeleteLog(log.id)}
+                        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      {log.status === 'late' && <Badge variant="destructive" className="text-[8px] h-4 uppercase">Late</Badge>}
-                      {organization?.overtimeEnabled && (log.overtimeMinutes || 0) > 0 && (
-                        <Badge className="bg-green-600 text-white text-[8px] h-4 uppercase">
-                          +{log.overtimeMinutes}m OT
-                        </Badge>
-                      )}
-                      {log.manualOverride && <Badge variant="outline" className="text-[8px] h-4 uppercase border-primary/20 text-primary bg-primary/5">Manual</Badge>}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-5 pt-4 space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border">
-                      <div className="text-center">
-                        <p className="text-[8px] font-bold text-muted-foreground uppercase mb-1">In</p>
-                        <p className="text-xs font-mono font-bold">{log.clockInTime?.substring(0, 5) || '--:--'}</p>
+                    <CardHeader className="p-5 pb-0 flex flex-row items-center justify-between space-y-0">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-xl bg-primary/5 text-primary flex items-center justify-center font-black text-sm border border-primary/10">
+                          {log.userName.charAt(0)}
+                        </div>
+                        <div>
+                          <CardTitle className="text-sm font-bold tracking-tight">{log.userName}</CardTitle>
+                          <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">{log.userDepartment}</p>
+                        </div>
                       </div>
-                      <div className="h-4 w-px bg-border" />
-                      <div className="text-center">
-                        <p className="text-[8px] font-bold text-muted-foreground uppercase mb-1">Out</p>
-                        <p className="text-xs font-mono font-bold">{log.clockOutTime?.substring(0, 5) || '--:--'}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        {log.clockOutTime ? (
-                          <div className="flex gap-0.5">
-                            {Array(log.moodRating || 0).fill(0).map((_, i) => (
-                              <div key={i} className="h-1.5 w-1.5 rounded-full bg-primary" />
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="flex items-center gap-2 text-[10px] font-bold text-green-600 uppercase tracking-widest">
-                            <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                            On-Site
-                          </span>
+                      <div className="flex flex-col items-end gap-1">
+                        {log.status === 'late' && <Badge variant="destructive" className="text-[8px] h-4 uppercase">Late</Badge>}
+                        {organization?.overtimeEnabled && (log.overtimeMinutes || 0) > 0 && (
+                          <Badge className="bg-green-600 text-white text-[8px] h-4 uppercase">
+                            +{log.overtimeMinutes}m OT
+                          </Badge>
                         )}
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Badge variant="ghost" className="text-[9px] uppercase opacity-40 px-0">Verified</Badge>
-                        <p className="text-[9px] font-mono text-muted-foreground opacity-60">({staffMember?.shiftStart}-{staffMember?.shiftEnd})</p>
+                    </CardHeader>
+                    <CardContent className="p-5 pt-4 space-y-4">
+                      <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border">
+                        <div className="text-center">
+                          <p className="text-[8px] font-bold text-muted-foreground uppercase mb-1">In</p>
+                          <p className="text-xs font-mono font-bold">{log.clockInTime?.substring(0, 5) || '--:--'}</p>
+                        </div>
+                        <div className="h-4 w-px bg-border" />
+                        <div className="text-center">
+                          <p className="text-[8px] font-bold text-muted-foreground uppercase mb-1">Out</p>
+                          <p className="text-xs font-mono font-bold">{log.clockOutTime?.substring(0, 5) || '--:--'}</p>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
-          )}
-        </div>
-      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          {log.clockOutTime ? (
+                            <div className="flex gap-0.5">
+                              {Array(log.moodRating || 0).fill(0).map((_, i) => (
+                                <div key={i} className="h-1.5 w-1.5 rounded-full bg-primary" />
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="flex items-center gap-2 text-[10px] font-bold text-green-600 uppercase tracking-widest">
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                              On-Site
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Badge variant="ghost" className="text-[9px] uppercase opacity-40 px-0">Verified</Badge>
+                          <p className="text-[9px] font-mono text-muted-foreground opacity-60">({staffMember?.shiftStart}-{staffMember?.shiftEnd})</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="history" className="m-0">
+          <Card className="rounded-2xl border-none shadow-sm overflow-hidden bg-card">
+            <div className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/30 border-b">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Staff</th>
+                      <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Date</th>
+                      <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Shift Window</th>
+                      <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Status</th>
+                      <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Handover</th>
+                      <th className="px-6 py-4 text-right pr-6"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {historyLoading ? (
+                      <tr><td colSpan={6} className="text-center py-10"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr>
+                    ) : filteredHistory.length === 0 ? (
+                      <tr><td colSpan={6} className="text-center py-20 opacity-40">No records found.</td></tr>
+                    ) : (
+                      filteredHistory.map((log) => (
+                        <tr key={log.id} className="hover:bg-muted/5 group">
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-foreground">{log.userName}</div>
+                            <div className="text-[10px] text-muted-foreground uppercase">{log.userDepartment}</div>
+                          </td>
+                          <td className="px-6 py-4 font-mono text-xs">{log.date}</td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 font-mono text-xs">
+                              {log.clockInTime?.substring(0, 5)} <ArrowRight className="h-3 w-3 opacity-40" /> {log.clockOutTime?.substring(0, 5) || '??:??'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <Badge variant="outline" className={cn(
+                              "text-[8px] uppercase font-bold",
+                              log.status === 'late' && "border-destructive text-destructive",
+                              log.status === 'overtime' && "border-green-600 text-green-600",
+                              !log.clockOutTime && "animate-pulse border-amber-500 text-amber-500"
+                            )}>
+                              {log.status.replace('-', ' ')}
+                            </Badge>
+                          </td>
+                          <td className="px-6 py-4 max-w-xs">
+                            <p className="text-xs text-muted-foreground truncate" title={log.handoverNotes || ""}>
+                              {log.handoverNotes || "--"}
+                            </p>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={() => handleDeleteLog(log.id)}
+                              className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={!!editingStaff} onOpenChange={(open) => !open && setEditingStaff(null)}>
         <DialogContent className="sm:max-w-md rounded-3xl">
           <DialogHeader>
             <DialogTitle className="text-2xl font-headline font-bold">Correct Shift Parameters</DialogTitle>
-            <DialogDescription>Adjust institutional shift windows for personnel already on-site.</DialogDescription>
+            <DialogDescription>Adjust institutional shift windows for personnel.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-1">
@@ -708,10 +816,6 @@ export default function AdminDashboard() {
                 <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">End Time</Label>
                 <Input type="time" value={editingStaff?.shiftEnd || "17:00"} onChange={e => setEditingStaff(p => p ? {...p, shiftEnd: e.target.value} : null)} className="rounded-xl h-11" />
               </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Department Correction</Label>
-              <Input value={editingStaff?.department || ""} onChange={e => setEditingStaff(p => p ? {...p, department: e.target.value} : null)} className="rounded-xl h-11" />
             </div>
           </div>
           <DialogFooter>

@@ -1,14 +1,25 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { usePulseLogAuth } from "@/hooks/use-pulselog-auth";
-import { useFirestore } from "@/firebase";
-import { doc, setDoc, query, where, collection, getDocs, limit } from "firebase/firestore";
-import { Card, CardContent } from "@/components/ui/card";
+import { useFirestore, useCollection } from "@/firebase";
+import { 
+  doc, 
+  setDoc, 
+  query, 
+  where, 
+  collection, 
+  getDocs, 
+  limit, 
+  orderBy,
+  Timestamp 
+} from "firebase/firestore";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { 
   Dialog, 
   DialogContent, 
@@ -30,10 +41,13 @@ import {
   ShieldX,
   Briefcase,
   BrainCircuit,
-  Heart
+  Heart,
+  History,
+  CalendarDays,
+  AlertTriangle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { format, differenceInMinutes, parse } from "date-fns";
+import { format, differenceInMinutes, parse, isToday } from "date-fns";
 import { AttendanceLog, MoodRating } from "@/lib/types";
 import { cn, calculateDistance } from "@/lib/utils";
 
@@ -41,7 +55,7 @@ export default function StaffPage() {
   const { profile, organization, loading: authLoading } = usePulseLogAuth();
   const db = useFirestore();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [attendance, setAttendance] = useState<AttendanceLog | null>(null);
+  const [activeShift, setActiveShift] = useState<AttendanceLog | null>(null);
   const [loading, setLoading] = useState(true);
   const [clockOutOpen, setClockOutOpen] = useState(false);
   const [mood, setMood] = useState<MoodRating | null>(null);
@@ -55,9 +69,22 @@ export default function StaffPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // History Query
+  const historyQuery = useMemo(() => {
+    if (!profile?.uid || !db) return null;
+    return query(
+      collection(db, "attendance_logs"),
+      where("userId", "==", profile.uid),
+      orderBy("date", "desc"),
+      limit(10)
+    );
+  }, [db, profile?.uid]);
+
+  const { data: historyLogs } = useCollection<AttendanceLog>(historyQuery);
+
   useEffect(() => {
     if (profile && organization) {
-      fetchTodayAttendance();
+      fetchActiveShift();
       verifyLocation();
     }
   }, [profile, organization]);
@@ -82,7 +109,6 @@ export default function StaffPage() {
           setLocationStatus('verified');
         } else {
           setLocationStatus('outside');
-          toast({ title: "Perimeter Check Failed", description: "You are outside the organization fence.", variant: "destructive" });
         }
       },
       () => setLocationStatus('denied'),
@@ -90,22 +116,22 @@ export default function StaffPage() {
     );
   };
 
-  const fetchTodayAttendance = async () => {
+  const fetchActiveShift = async () => {
     if (!profile || !db) return;
     setLoading(true);
-    const today = format(new Date(), 'yyyy-MM-dd');
+    // Find ANY shift that hasn't been clocked out
     const q = query(
       collection(db, "attendance_logs"),
       where("userId", "==", profile.uid),
-      where("date", "==", today),
+      where("clockOutTime", "==", null),
       limit(1)
     );
     try {
       const snap = await getDocs(q);
       if (!snap.empty) {
-        setAttendance({ id: snap.docs[0].id, ...snap.docs[0].data() } as AttendanceLog);
+        setActiveShift({ id: snap.docs[0].id, ...snap.docs[0].data() } as AttendanceLog);
       } else {
-        setAttendance(null);
+        setActiveShift(null);
       }
     } finally {
       setLoading(false);
@@ -113,30 +139,19 @@ export default function StaffPage() {
   };
 
   const handleClockIn = async () => {
-    // Security: Debounce & Requirements Check
     if (!profile || !db || locationStatus !== 'verified' || loading) {
       toast({ title: "Protocol Refused", description: "GPS verification and authentication sync required.", variant: "destructive" });
       return;
     }
 
-    setLoading(true);
-    const today = format(new Date(), 'yyyy-MM-dd');
-
-    // Security: Idempotency check before write
-    const q = query(
-      collection(db, "attendance_logs"),
-      where("userId", "==", profile.uid),
-      where("date", "==", today),
-      limit(1)
-    );
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      toast({ title: "Idempotency Lock", description: "A shift is already active for today." });
-      setAttendance({ id: snap.docs[0].id, ...snap.docs[0].data() } as AttendanceLog);
-      setLoading(false);
+    // Check if there is ALREADY an active shift
+    if (activeShift) {
+      toast({ title: "Sequence Error", description: "You must finalize your pending shift before starting a new one.", variant: "destructive" });
       return;
     }
 
+    setLoading(true);
+    const today = format(new Date(), 'yyyy-MM-dd');
     const now = new Date();
     const timeStr = format(now, 'HH:mm:ss');
     
@@ -163,24 +178,22 @@ export default function StaffPage() {
     };
 
     try {
-      // Security: Optimized setDoc (non-blocking in UI, but handled via loading state)
       await setDoc(newLogRef, newLog);
-      setAttendance(newLog as AttendanceLog);
-      toast({ title: status === 'late' ? "Arrival Noted (Late)" : "Clocked In", description: `Arrival verified at ${format(now, 'hh:mm a')}` });
+      setActiveShift(newLog as AttendanceLog);
+      toast({ title: "Clocked In", description: `Arrival verified for ${today}.` });
     } catch (err) {
-      toast({ title: "Sync Failure", description: "Failed to broadcast arrival to operational database.", variant: "destructive" });
+      toast({ title: "Sync Failure", description: "Failed to broadcast arrival.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
   const handleClockOut = async () => {
-    if (!attendance || !profile || !db || loading) return;
+    if (!activeShift || !profile || !db || loading) return;
     
-    // Security: Input Sanitization
     const sanitizedNotes = notes.trim();
     if (!sanitizedNotes || !mood) {
-      toast({ title: "Protocol Violation", description: "Handover notes and morale score are required.", variant: "destructive" });
+      toast({ title: "Incomplete Log", description: "Handover notes and morale score are required.", variant: "destructive" });
       return;
     }
 
@@ -192,7 +205,7 @@ export default function StaffPage() {
     const shiftEnd = parse(endTimeStr, 'HH:mm', now);
     
     let overtime = 0;
-    let status = attendance.status;
+    let status = activeShift.status;
 
     if (organization?.overtimeEnabled) {
       if (now > shiftEnd) {
@@ -210,7 +223,7 @@ export default function StaffPage() {
     }
 
     try {
-      await setDoc(doc(db, "attendance_logs", attendance.id), {
+      await setDoc(doc(db, "attendance_logs", activeShift.id), {
         clockOutTime: timeStr,
         status: status,
         moodRating: mood,
@@ -218,153 +231,202 @@ export default function StaffPage() {
         overtimeMinutes: organization?.overtimeEnabled ? overtime : 0
       }, { merge: true });
       
-      setAttendance(prev => prev ? { ...prev, clockOutTime: timeStr, moodRating: mood, handoverNotes: sanitizedNotes, status, overtimeMinutes: overtime } : null);
+      setActiveShift(null);
       setClockOutOpen(false);
+      setNotes("");
+      setMood(null);
       toast({ title: "Shift Finalized", description: "Operational intelligence synchronized." });
     } catch (err) {
-      toast({ title: "Departure Error", description: "Failed to synchronize departure log.", variant: "destructive" });
+      toast({ title: "Departure Error", description: "Failed to sync departure.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
-  if (authLoading) return null;
+  const isPendingPrevious = activeShift && !isToday(new Date(activeShift.date));
 
   return (
-    <div className="space-y-6 flex flex-col items-center max-w-lg mx-auto pb-12">
-      <div className="text-center space-y-2 mb-2">
+    <div className="space-y-8 flex flex-col items-center max-w-4xl mx-auto pb-20">
+      <div className="text-center space-y-2 w-full">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-[0.2em] mb-4 border border-primary/20">
           <ShieldCheck className="h-4 w-4" />
-          Presence Protocol Active
+          PulseLog Staff Portal
         </div>
-        <h1 className="text-4xl font-headline font-black text-foreground tracking-tight">Shift Sync</h1>
-        <div className="flex items-center justify-center gap-3 bg-card p-3 rounded-2xl border shadow-sm">
-          <Briefcase className="h-5 w-5 text-primary" />
-          <div className="text-left">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground leading-none mb-1">Assigned Department</p>
-            <p className="text-sm font-bold text-foreground leading-none">{profile?.department}</p>
-          </div>
-        </div>
+        <h1 className="text-4xl font-headline font-black text-foreground tracking-tight">Shift Lifecycle</h1>
       </div>
 
-      <div className="w-full">
-        <Card className="shadow-[0_20px_60px_rgba(0,0,0,0.1)] border-none overflow-hidden rounded-[2.5rem]">
-          <div className="bg-[#002B5B] p-10 text-center text-white relative">
-            <div className="absolute top-6 left-6 opacity-5"><MapPin className="h-20 w-20" /></div>
-            <div className="text-7xl font-mono font-black tracking-tighter mb-2">
-              {format(currentDate, 'HH:mm')}
-              <span className="text-2xl ml-2 opacity-40 font-bold">{format(currentDate, 'ss')}</span>
-            </div>
-            <p className="text-[12px] font-bold uppercase tracking-[0.4em] opacity-60">{format(currentDate, 'EEEE, MMMM do')}</p>
-          </div>
-
-          <CardContent className="p-10 space-y-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full">
+        {/* Main Controls */}
+        <div className="space-y-6">
+          <Card className="shadow-2xl border-none overflow-hidden rounded-[2.5rem]">
             <div className={cn(
-              "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
-              locationStatus === 'verified' ? "bg-green-500/5 border-green-500/20 text-green-600" :
-              locationStatus === 'checking' ? "bg-muted/50 border-muted text-muted-foreground" :
-              "bg-destructive/5 border-destructive/20 text-destructive"
+              "p-10 text-center text-white relative",
+              isPendingPrevious ? "bg-amber-600" : "bg-[#002B5B]"
             )}>
-              <div className="flex items-center gap-3">
-                {locationStatus === 'verified' ? <LocateFixed className="h-5 w-5" /> :
-                 locationStatus === 'checking' ? <Loader2 className="h-5 w-5 animate-spin" /> :
-                 <ShieldX className="h-5 w-5" />}
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em]">
-                  {locationStatus === 'verified' ? "Perimeter Verified" :
-                   locationStatus === 'checking' ? "Scanning GPS..." :
-                   locationStatus === 'outside' ? "Outside Fence" : "No GPS Sync"}
-                </span>
+              <div className="absolute top-6 left-6 opacity-5"><MapPin className="h-20 w-20" /></div>
+              <div className="text-7xl font-mono font-black tracking-tighter mb-2">
+                {format(currentDate, 'HH:mm')}
+                <span className="text-2xl ml-2 opacity-40 font-bold">{format(currentDate, 'ss')}</span>
               </div>
-              <Button variant="ghost" size="sm" className="h-7 text-[9px] font-bold uppercase border hover:bg-white" onClick={verifyLocation}>Recalibrate</Button>
+              <p className="text-[12px] font-bold uppercase tracking-[0.4em] opacity-60">{format(currentDate, 'EEEE, MMMM do')}</p>
+              
+              {isPendingPrevious && (
+                <div className="mt-4 inline-flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/30">
+                  <AlertTriangle className="h-3 w-3" />
+                  Incomplete Shift: {activeShift.date}
+                </div>
+              )}
             </div>
 
-            {!attendance ? (
-              <div className="space-y-6">
+            <CardContent className="p-8 space-y-6">
+              <div className={cn(
+                "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
+                locationStatus === 'verified' ? "bg-green-500/5 border-green-500/20 text-green-600" :
+                locationStatus === 'checking' ? "bg-muted/50 border-muted text-muted-foreground" :
+                "bg-destructive/5 border-destructive/20 text-destructive"
+              )}>
+                <div className="flex items-center gap-3">
+                  {locationStatus === 'verified' ? <LocateFixed className="h-5 w-5" /> :
+                   locationStatus === 'checking' ? <Loader2 className="h-5 w-5 animate-spin" /> :
+                   <ShieldX className="h-5 w-5" />}
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em]">
+                    {locationStatus === 'verified' ? "Within Perimeter" :
+                     locationStatus === 'checking' ? "Locating..." :
+                     "Outside Fence"}
+                  </span>
+                </div>
+                <Button variant="ghost" size="sm" className="h-7 text-[9px] font-bold uppercase border" onClick={verifyLocation}>Retry</Button>
+              </div>
+
+              {!activeShift ? (
                 <Button 
-                  className={cn("w-full h-28 rounded-3xl flex flex-col gap-2 shadow-2xl transition-all", locationStatus === 'verified' ? "bg-primary shadow-primary/20 hover:scale-[1.02]" : "bg-muted text-muted-foreground opacity-60 cursor-not-allowed")}
+                  className={cn(
+                    "w-full h-32 rounded-3xl flex flex-col gap-2 shadow-xl transition-all", 
+                    locationStatus === 'verified' ? "bg-primary hover:scale-[1.02]" : "bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
+                  )}
                   onClick={handleClockIn}
                   disabled={loading || locationStatus !== 'verified'}
                 >
                   {loading ? <Loader2 className="animate-spin h-8 w-8" /> : (
                     <>
                       <Clock className="h-8 w-8" />
-                      <span className="text-xl font-bold uppercase tracking-tight">Authorize Arrival</span>
-                      <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Shift: {profile?.shiftStart} - {profile?.shiftEnd}</span>
+                      <span className="text-xl font-bold uppercase tracking-tight">Begin New Shift</span>
+                      <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Target: {profile?.shiftStart} - {profile?.shiftEnd}</span>
                     </>
                   )}
                 </Button>
-              </div>
-            ) : attendance.clockOutTime ? (
-              <div className="py-8 flex flex-col items-center text-center space-y-8 animate-in fade-in zoom-in-95 duration-500">
-                <div className="h-24 w-24 bg-green-500/10 rounded-full flex items-center justify-center border-4 border-white shadow-xl ring-1 ring-green-500/20">
-                  <CheckCircle2 className="h-12 w-12 text-green-600" />
-                </div>
-                <div>
-                  <h3 className="text-3xl font-headline font-black text-foreground">Shift Completed</h3>
-                  {organization?.overtimeEnabled && attendance.overtimeMinutes ? (
-                    <Badge className="mt-2 bg-green-600">Reward Points: +{attendance.overtimeMinutes} OT</Badge>
-                  ) : null}
-                </div>
-                <div className="grid grid-cols-2 gap-4 w-full">
-                  <div className="bg-muted/30 p-6 rounded-3xl border flex flex-col items-center"><span className="text-[10px] font-bold text-muted-foreground uppercase mb-2">Arrival</span><span className="text-2xl font-black font-mono">{attendance.clockInTime?.substring(0, 5)}</span></div>
-                  <div className="bg-muted/30 p-6 rounded-3xl border flex flex-col items-center"><span className="text-[10px] font-bold text-muted-foreground uppercase mb-2">Departure</span><span className="text-2xl font-black font-mono">{attendance.clockOutTime?.substring(0, 5)}</span></div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-8">
-                <div className="bg-green-600/5 rounded-3xl p-6 flex items-center justify-between border border-green-600/10">
-                  <div className="flex items-center gap-4">
-                    <div className="h-14 w-14 bg-green-600/10 rounded-2xl flex items-center justify-center"><Clock className="h-7 w-7 text-green-600" /></div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold tracking-[0.2em] text-green-600 mb-1">Session Active</p>
-                      <p className="text-2xl font-black text-foreground font-mono">{attendance.clockInTime?.substring(0, 5)}</p>
+              ) : (
+                <div className="space-y-4">
+                  <div className={cn(
+                    "rounded-3xl p-6 flex items-center justify-between border",
+                    isPendingPrevious ? "bg-amber-50 border-amber-200" : "bg-green-50 border-green-200"
+                  )}>
+                    <div className="flex items-center gap-4">
+                      <div className={cn(
+                        "h-12 w-12 rounded-2xl flex items-center justify-center",
+                        isPendingPrevious ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600"
+                      )}><Clock className="h-6 w-6" /></div>
+                      <div>
+                        <p className={cn("text-[10px] uppercase font-bold tracking-[0.2em] mb-1", isPendingPrevious ? "text-amber-600" : "text-green-600")}>
+                          {isPendingPrevious ? `Incomplete: ${activeShift.date}` : "Active Session"}
+                        </p>
+                        <p className="text-2xl font-black font-mono">{activeShift.clockInTime?.substring(0, 5)}</p>
+                      </div>
                     </div>
                   </div>
-                  {attendance.status === 'late' && <span className="h-6 px-3 flex items-center bg-destructive/10 text-destructive text-[10px] font-bold uppercase rounded-lg">Late Arrival</span>}
-                </div>
-                
-                <div className="space-y-4">
+                  
                   <Button 
-                    className="w-full h-28 rounded-3xl flex flex-col gap-2 bg-accent hover:bg-accent/90 shadow-xl text-accent-foreground font-bold transition-all"
+                    className={cn(
+                      "w-full h-28 rounded-3xl flex flex-col gap-2 shadow-xl transition-all",
+                      isPendingPrevious ? "bg-amber-600 hover:bg-amber-700" : "bg-accent hover:bg-accent/90"
+                    )}
                     onClick={() => setClockOutOpen(true)}
                     disabled={loading}
                   >
                     <ArrowRight className="h-8 w-8" />
                     <span className="text-xl uppercase tracking-tight">Finalize Departure</span>
-                    <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Operational Protocol Required</span>
+                    <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest">Required for data sync</span>
                   </Button>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Shift History */}
+        <div className="space-y-6">
+          <Card className="rounded-[2rem] border-none shadow-sm h-full bg-card">
+            <CardHeader className="flex flex-row items-center justify-between border-b pb-6">
+              <div className="flex items-center gap-3">
+                <History className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg font-bold">Recent History</CardTitle>
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <Badge variant="outline" className="text-[9px] font-bold uppercase tracking-widest">Last 10 Logs</Badge>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y max-h-[500px] overflow-y-auto">
+                {!historyLogs || historyLogs.length === 0 ? (
+                  <div className="p-20 text-center opacity-20">
+                    <CalendarDays className="h-12 w-12 mx-auto mb-2" />
+                    <p className="text-[10px] font-bold uppercase tracking-widest">No previous logs found</p>
+                  </div>
+                ) : (
+                  historyLogs.map((log) => (
+                    <div key={log.id} className="p-6 hover:bg-muted/10 transition-colors flex items-center justify-between group">
+                      <div className="flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-xl bg-muted flex flex-col items-center justify-center">
+                          <span className="text-[8px] font-bold uppercase opacity-60">{format(new Date(log.date), 'MMM')}</span>
+                          <span className="text-sm font-black leading-none">{format(new Date(log.date), 'dd')}</span>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold leading-none mb-1">{log.status.replace('-', ' ').toUpperCase()}</p>
+                          <p className="text-[10px] font-mono opacity-60">{log.clockInTime?.substring(0, 5)} - {log.clockOutTime?.substring(0, 5) || '??:??'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {log.moodRating && (
+                          <div className="flex gap-0.5">
+                            {Array(log.moodRating).fill(0).map((_, i) => (
+                              <div key={i} className="h-1 w-1 rounded-full bg-primary" />
+                            ))}
+                          </div>
+                        )}
+                        {!log.clockOutTime && <Badge variant="destructive" className="text-[8px] animate-pulse">PENDING</Badge>}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <Dialog open={clockOutOpen} onOpenChange={setClockOutOpen}>
         <DialogContent className="sm:max-w-[425px] rounded-[2rem] p-8">
           <DialogHeader className="mb-6">
-            <DialogTitle className="text-3xl font-headline font-black">Departure Log</DialogTitle>
-            <DialogDescription className="text-sm font-medium">Log operational summaries and personal wellness.</DialogDescription>
+            <DialogTitle className="text-3xl font-headline font-black">Finalize Log</DialogTitle>
+            <DialogDescription className="text-sm font-medium">Complete operational summary for {activeShift?.date}.</DialogDescription>
           </DialogHeader>
           <div className="space-y-8">
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
                 <Heart className="h-4 w-4 text-primary" />
-                <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Shift Morale Score</Label>
+                <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Shift Morale</Label>
               </div>
               <div className="flex justify-between gap-3">
                 {[
                   { v: 3, label: 'Smooth', icon: Smile, color: 'text-green-600', bg: 'bg-green-600/10', border: 'border-green-600' },
-                  { v: 2, label: 'Standard', icon: Meh, color: 'text-amber-600', bg: 'bg-amber-600/10', border: 'border-amber-600' },
-                  { v: 1, label: 'Hectic', icon: Frown, color: 'text-red-600', bg: 'bg-red-600/10', border: 'border-red-600' }
+                  { v: 2, label: 'Normal', icon: Meh, color: 'text-amber-600', bg: 'bg-amber-600/10', border: 'border-amber-600' },
+                  { v: 1, label: 'Stress', icon: Frown, color: 'text-red-600', bg: 'bg-red-600/10', border: 'border-red-600' }
                 ].map((m) => (
                   <button 
                     key={m.v}
                     onClick={() => setMood(m.v as MoodRating)}
-                    className={cn("flex-1 flex flex-col items-center gap-2 p-5 rounded-3xl border-2 transition-all", mood === m.v ? `${m.bg} ${m.border}` : "bg-muted/50 border-transparent grayscale opacity-40 hover:grayscale-0 hover:opacity-100")}
+                    className={cn("flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all", mood === m.v ? `${m.bg} ${m.border}` : "bg-muted/50 border-transparent grayscale opacity-40 hover:grayscale-0 hover:opacity-100")}
                   >
-                    <m.icon className={cn("h-10 w-10", mood === m.v ? m.color : "text-muted-foreground")} />
-                    <span className="text-[10px] font-bold uppercase tracking-tighter">{m.label}</span>
+                    <m.icon className={cn("h-8 w-8", mood === m.v ? m.color : "text-muted-foreground")} />
+                    <span className="text-[8px] font-bold uppercase">{m.label}</span>
                   </button>
                 ))}
               </div>
@@ -372,12 +434,17 @@ export default function StaffPage() {
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
                 <BrainCircuit className="h-4 w-4 text-primary" />
-                <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Operational Notes (Required)</Label>
+                <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Handover Summary</Label>
               </div>
-              <Textarea placeholder="Tasks completed, issues flagged, shift summary..." className="min-h-[160px] rounded-2xl p-4 bg-muted/30 border-none text-sm font-medium" value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <Textarea 
+                placeholder="Critical observations, tasks, or issues..." 
+                className="min-h-[140px] rounded-2xl p-4 bg-muted/30 border-none text-sm font-medium" 
+                value={notes} 
+                onChange={(e) => setNotes(e.target.value)} 
+              />
             </div>
-            <Button className="w-full h-14 text-xl font-bold rounded-2xl shadow-2xl" disabled={!mood || !notes || loading} onClick={handleClockOut}>
-              {loading ? <Loader2 className="animate-spin h-6 w-6" /> : "Sign Out & Sync"}
+            <Button className="w-full h-14 text-lg font-bold rounded-2xl shadow-xl" disabled={!mood || !notes || loading} onClick={handleClockOut}>
+              {loading ? <Loader2 className="animate-spin h-6 w-6" /> : "Authorize Sync"}
             </Button>
           </div>
         </DialogContent>
